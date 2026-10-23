@@ -68,7 +68,7 @@ export function createServer() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT || 3100);
   const server = createServer().listen(port, '127.0.0.1', () => {
-    console.log(`Intelligent UI Lab API: http://127.0.0.1:${port}`);
+    console.log(`Agent UI Lab API: http://127.0.0.1:${port}`);
     console.log(
       process.argv.includes('--production')
         ? 'Serving production build.'

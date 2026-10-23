@@ -271,11 +271,11 @@ export function App({
         }}
       >
         <div className="brand">
-          <a className="brand-mark" href="#overview" aria-label="Intelligent UI Lab 首页">
+          <a className="brand-mark" href="#overview" aria-label="Agent UI Lab 首页">
             <FlaskConical size={21} aria-hidden="true" />
           </a>
           <span>
-            Intelligent UI<span className="brand-subtitle">THE LEARNING LAB</span>
+            Agent UI<span className="brand-subtitle">THE LEARNING LAB</span>
           </span>
           <button
             type="button"
@@ -635,7 +635,7 @@ export function App({
         </main>
         <footer className="page-footer">
           <span>
-            Intelligent UI Lab <span className="footer-separator">/</span> 理解协议，构建交互。
+            Agent UI Lab <span className="footer-separator">/</span> 理解协议，构建交互。
           </span>
           <span>
             Built for curiosity <Sparkles size={12} aria-hidden="true" />
@@ -669,7 +669,7 @@ function Overview({ navigate }: { navigate: (page: Page) => void }) {
       <section className="hero-panel">
         <div className="hero-copy">
           <span className="hero-label">
-            <FlaskConical size={15} aria-hidden="true" /> 你的 Intelligent UI 实验台
+            <FlaskConical size={15} aria-hidden="true" /> 你的 Agent UI 实验台
           </span>
           <h2>
             看得见的界面，

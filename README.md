@@ -1,16 +1,16 @@
-# Intelligent UI Lab
+# Agent UI Lab
 
 **在一个 Agent 聊天框里，学习事件怎样驱动界面、声明怎样生成组件、工具怎样提供应用。**
 
-Intelligent UI Lab 是一个面向前端开发者的 Agent UI 学习项目。它把 **AG-UI、A2UI、MCP Apps** 放进可操作的旅行对话中：你可以规划行程、填写生成表单、打开工具 App，再沿真实协议消息追到状态变化和源码实现。
+Agent UI Lab 是一个面向前端开发者的 Agent UI 学习项目。它把 **AG-UI、A2UI、MCP Apps** 放进可操作的旅行对话中：你可以规划行程、填写生成表单、打开工具 App，再沿真实协议消息追到状态变化和源码实现。
 
 无需模型密钥即可运行。当前 Agent 使用确定性规则与样本数据，**没有调用大语言模型（LLM）**。本地模式实际执行 HTTP、服务器发送事件（SSE）、MCP 工具调用和 iframe 通信；GitHub Pages 静态学习版在浏览器内运行同一套生成与校验逻辑，并保留真实的 App / Host 通信。
 
-[在线体验](https://likebeans.github.io/inteligentui/) · [快速开始](#快速开始) · [协议对比](#三个协议分别做什么) · [界面演示](#在一段对话中体验三种能力) · [学习路径](#怎样用这个项目学习) · [部署说明](#部署与-github-pages)
+[在线体验](https://likebeans.github.io/agent-ui-lab/) · [快速开始](#快速开始) · [协议对比](#三个协议分别做什么) · [界面演示](#在一段对话中体验三种能力) · [学习路径](#怎样用这个项目学习) · [部署说明](#部署与-github-pages)
 
 ![Agent 聊天首页：从旅行对话进入 AG-UI、A2UI 和 MCP Apps 三种交互示例](public/readme/screenshots/agent-chat.png)
 
-> 本文图片均从本地运行中的项目直接截图，包含真实操作后的状态。[GitHub Pages 静态学习版](https://likebeans.github.io/inteligentui/) 已上线，无需 API 服务或模型密钥；部署步骤见下文。
+> 本文图片均从本地运行中的项目直接截图，包含真实操作后的状态。[GitHub Pages 静态学习版](https://likebeans.github.io/agent-ui-lab/) 已上线，无需 API 服务或模型密钥；部署步骤见下文。
 
 ## 为什么学习 Agent UI
 
@@ -120,8 +120,8 @@ Agent UI 是这里讨论的交互方向，AG-UI、A2UI 和 MCP Apps 则分别约
 需要 **Node.js 22.12+**、npm 和浏览器。克隆仓库后启动本地模式：
 
 ```bash
-git clone https://github.com/likebeans/inteligentui.git
-cd inteligentui
+git clone https://github.com/likebeans/agent-ui-lab.git
+cd agent-ui-lab
 npm ci
 npm run dev
 ```
@@ -242,11 +242,11 @@ npm run preview:pages
 打开 <http://127.0.0.1:4173>，无需启动 3100 端口的后端。要模拟仓库子路径，在构建和预览时都传入相同的 `PAGES_BASE_PATH`：
 
 ```bash
-PAGES_BASE_PATH=/intelligent-ui-lab/ npm run build:pages
-PAGES_BASE_PATH=/intelligent-ui-lab/ npm run preview:pages
+PAGES_BASE_PATH=/agent-ui-lab/ npm run build:pages
+PAGES_BASE_PATH=/agent-ui-lab/ npm run preview:pages
 ```
 
-然后访问 `http://127.0.0.1:4173/intelligent-ui-lab/`。`npm run test:pages` 会自动在 `/pages-test/` 下构建并验证静态版，断言无 `/api` 或 `/mcp` 网络请求、无失败资源和浏览器异常。测试使用 Chrome；CI 使用 Playwright Chromium。
+然后访问 `http://127.0.0.1:4173/agent-ui-lab/`。`npm run test:pages` 会自动在 `/pages-test/` 下构建并验证静态版，断言无 `/api` 或 `/mcp` 网络请求、无失败资源和浏览器异常。测试使用 Chrome；CI 使用 Playwright Chromium。
 
 普通 `npm run build && npm start` 仍用于带真实后端的本地预览。两种构建都会写入 `dist/`，切换模式时重新构建。仅复制普通构建的 `dist/` 到 Pages 无法使用 API 交互；发布静态站点必须使用 `build:pages`。
 

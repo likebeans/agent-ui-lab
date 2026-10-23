@@ -26,9 +26,7 @@ test('reader renders Markdown chapters, searches full text and follows links and
   await page.goto('/#chat');
   await page.getByRole('link', { name: '打开学习文档', exact: true }).click();
   await expect(page).toHaveURL(/#docs\/map$/);
-  await expect(reader(page).getByRole('heading', { level: 1 })).toContainText(
-    'Intelligent UI 学习地图',
-  );
+  await expect(reader(page).getByRole('heading', { level: 1 })).toContainText('Agent UI 学习地图');
   const chapters = reader(page).getByRole('navigation', { name: '学习章节' });
   await expect(chapters.getByRole('link')).toHaveCount(10);
   const map = reader(page).getByRole('article', { name: '学习地图', exact: true });
@@ -89,7 +87,7 @@ test('reader renders Markdown chapters, searches full text and follows links and
 
   await chapters.getByRole('link', { name: /项目说明/ }).click();
   const project = reader(page).getByRole('article', { name: '项目说明', exact: true });
-  await expect(project.getByRole('heading', { level: 1 })).toContainText('Intelligent UI Lab');
+  await expect(project.getByRole('heading', { level: 1 })).toContainText('Agent UI Lab');
   await expect(project.locator('pre').first()).toContainText('npm run dev');
   const screenshots = project.getByRole('img');
   await expect(screenshots).toHaveCount(7);
@@ -359,9 +357,7 @@ test('phone reader opens every chapter without page overflow and synchronizes th
   await page.goto('/#chat');
   await page.getByRole('button', { name: '切换深色模式', exact: true }).click();
   await page.getByRole('link', { name: '打开学习文档', exact: true }).click();
-  await expect(reader(page).getByRole('heading', { level: 1 })).toContainText(
-    'Intelligent UI 学习地图',
-  );
+  await expect(reader(page).getByRole('heading', { level: 1 })).toContainText('Agent UI 学习地图');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(
     reader(page).getByRole('button', { name: '切换浅色模式', exact: true }),
@@ -369,7 +365,7 @@ test('phone reader opens every chapter without page overflow and synchronizes th
 
   const chapters = reader(page).getByRole('navigation', { name: '学习章节' });
   const destinations = [
-    ['map', 'Intelligent UI 学习地图'],
+    ['map', 'Agent UI 学习地图'],
     ['first-session', '第一次学习：30 分钟对话'],
     ['learning-method', '从观察到独立开发'],
     ['ag-ui', 'AG-UI：从事件流到真实界面'],
@@ -377,7 +373,7 @@ test('phone reader opens every chapter without page overflow and synchronizes th
     ['reference', '消息对照速查'],
     ['exercises', '练习清单'],
     ['real-development', '从学习实验到真实开发'],
-    ['project', 'Intelligent UI Lab'],
+    ['project', 'Agent UI Lab'],
     ['a2ui', 'A2UI：从声明到组件'],
   ];
   for (const [slug, heading] of destinations) {

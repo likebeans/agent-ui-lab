@@ -115,7 +115,7 @@ test('Pages runs the three chat protocols, learning experiments and documents en
   await expect(image).toHaveAttribute('src', `${base}readme/screenshots/agent-chat.png`);
   await page.reload();
   await expect(readme).toBeVisible();
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Intelligent UI Lab');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Agent UI Lab');
   verify();
 });
 

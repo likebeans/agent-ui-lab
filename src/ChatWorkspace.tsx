@@ -167,7 +167,7 @@ function TurnContent({
       </div>
       <div className="assistant-body">
         <div className="message-byline">
-          <strong>Intelligent UI Agent</strong>
+          <strong>Agent UI Agent</strong>
           <span className={`protocol-tag ${turn.request.protocol}`}>
             <Icon size={12} />
             {info.name}
@@ -459,7 +459,7 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
             <Sparkles size={20} />
           </span>
           <div>
-            Intelligent UI<small>LEARN THROUGH CONVERSATION</small>
+            Agent UI<small>LEARN THROUGH CONVERSATION</small>
           </div>
         </a>
         <button className="new-chat" type="button" onClick={reset}>
@@ -516,7 +516,7 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
             <ArrowRight size={13} />
           </a>
           <span className="chat-version">
-            Intelligent UI Lab <span>v0.2</span>
+            Agent UI Lab <span>v0.2</span>
           </span>
         </div>
       </aside>
@@ -607,7 +607,7 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
               </div>
               <div className="assistant-body">
                 <div className="message-byline">
-                  <strong>Intelligent UI Agent</strong>
+                  <strong>Agent UI Agent</strong>
                   <span>你的协议学习搭档</span>
                 </div>
                 <h1>聊一聊，让界面自然发生。</h1>

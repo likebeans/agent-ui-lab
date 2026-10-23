@@ -59,7 +59,7 @@ export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
     };
   }, []);
   useEffect(() => {
-    window.document.title = `${document?.title ?? '未找到章节'} · Intelligent UI`;
+    window.document.title = `${document?.title ?? '未找到章节'} · Agent UI`;
     const target =
       section && article.current
         ? Array.from(article.current.querySelectorAll<HTMLElement>('[data-section]')).find(
@@ -175,7 +175,7 @@ export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
             <BookOpen size={20} aria-hidden="true" />
           </span>
           <strong>
-            学习文档<small>Intelligent UI Lab</small>
+            学习文档<small>Agent UI Lab</small>
           </strong>
         </a>
         <div className="docs-top-actions">
