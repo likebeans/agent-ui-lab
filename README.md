@@ -6,11 +6,11 @@ Intelligent UI Lab 是一个面向前端开发者的 Agent UI 学习项目。它
 
 无需模型密钥即可运行。当前 Agent 使用确定性规则与样本数据，**没有调用大语言模型（LLM）**。本地模式实际执行 HTTP、服务器发送事件（SSE）、MCP 工具调用和 iframe 通信；GitHub Pages 静态学习版在浏览器内运行同一套生成与校验逻辑，并保留真实的 App / Host 通信。
 
-[快速开始](#快速开始) · [协议对比](#三个协议分别做什么) · [界面演示](#在一段对话中体验三种能力) · [学习路径](#怎样用这个项目学习) · [部署说明](#部署与-github-pages)
+[在线体验](https://likebeans.github.io/inteligentui/) · [快速开始](#快速开始) · [协议对比](#三个协议分别做什么) · [界面演示](#在一段对话中体验三种能力) · [学习路径](#怎样用这个项目学习) · [部署说明](#部署与-github-pages)
 
 ![Agent 聊天首页：从旅行对话进入 AG-UI、A2UI 和 MCP Apps 三种交互示例](public/readme/screenshots/agent-chat.png)
 
-> 本文图片均从本地运行中的项目直接截图，包含真实操作后的状态。项目已适配 GitHub Pages 静态学习版，尚未发布公共站点；部署步骤见下文。
+> 本文图片均从本地运行中的项目直接截图，包含真实操作后的状态。[GitHub Pages 静态学习版](https://likebeans.github.io/inteligentui/) 已上线，无需 API 服务或模型密钥；部署步骤见下文。
 
 ## 为什么学习 Agent UI
 

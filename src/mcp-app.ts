@@ -188,11 +188,7 @@ function render(): void {
   }
 
   shell.append(
-    makeText(
-      'div',
-      'App → postMessage → Host allowlist → MCP Streamable HTTP → fixture tool',
-      'foot',
-    ),
+    makeText('div', 'App → postMessage → Host allowlist → MCP Client → fixture tool', 'foot'),
   );
   appRoot.append(shell);
 }
