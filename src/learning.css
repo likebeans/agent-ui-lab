@@ -1,0 +1,402 @@
+.conversation-app .learning-panel {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+.conversation-app .learning-panel p {
+  line-height: 1.8;
+}
+.conversation-app .learning-panel > p + p {
+  margin-top: 8px;
+}
+.conversation-app .learning-panel select option {
+  color: var(--text);
+  background: var(--surface);
+}
+.conversation-app .learning-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--primary);
+  font-weight: 650;
+  margin-bottom: 8px;
+}
+.conversation-app .learning-controls,
+.conversation-app .learning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+.conversation-app .learning-controls button,
+.conversation-app .learning-actions button,
+.conversation-app .learning-link {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px 10px;
+  min-height: 34px;
+  font-size: 11px;
+}
+.conversation-app .learning-controls button:hover:not(:disabled),
+.conversation-app .learning-actions button:hover:not(:disabled),
+.conversation-app .learning-link:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+.conversation-app .learning-controls > span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.conversation-app .learning-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0;
+  color: var(--text);
+  font-size: 12px;
+}
+.conversation-app .learning-field select,
+.conversation-app .learning-field textarea,
+.conversation-app .learning-field input:not([type='range']) {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 10px;
+  font: inherit;
+}
+.conversation-app .learning-field textarea {
+  font:
+    12px/1.7 ui-monospace,
+    monospace;
+  resize: vertical;
+  min-height: 120px;
+}
+.conversation-app .learning-field input[type='range'] {
+  width: 100%;
+  accent-color: var(--primary);
+  min-height: 30px;
+}
+.conversation-app .causal-evidence {
+  padding: 15px;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  border-radius: 9px;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.conversation-app .causal-evidence > strong {
+  font:
+    600 12px/1.7 ui-monospace,
+    monospace;
+}
+.conversation-app .causal-evidence > p {
+  margin-top: 8px;
+  font-size: 12px;
+}
+.conversation-app .state-comparison {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  margin: 12px 0;
+}
+.conversation-app .state-comparison > div {
+  min-width: 0;
+}
+.conversation-app .state-comparison h4 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.conversation-app .state-comparison pre,
+.conversation-app .learning-panel pre,
+.conversation-app .prediction-lesson pre {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  font:
+    11px/1.7 ui-monospace,
+    monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 280px;
+  overflow: auto;
+  margin: 8px 0;
+}
+.conversation-app .changed-paths {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  border-left: 3px solid var(--primary);
+}
+.conversation-app .changed-paths li {
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.conversation-app .changed-paths code {
+  color: var(--primary);
+  font-size: 11px;
+}
+.conversation-app .source-location {
+  display: block;
+  font:
+    10px/1.8 ui-monospace,
+    monospace;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  margin: 10px 0;
+}
+.conversation-app .causal-link {
+  display: inline-flex;
+  align-items: center;
+  margin: 4px 7px;
+  background: transparent;
+  color: var(--primary);
+  border: 0;
+  border-bottom: 1px dotted currentColor;
+  padding: 3px 0;
+  font-size: 10px;
+  min-height: 24px;
+}
+.conversation-app .causal-highlight {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 5px;
+}
+.conversation-app .agui-playback-toolbar {
+  margin: 8px 0 16px;
+}
+.conversation-app .learning-experiment {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 12px;
+}
+.conversation-app .learning-experiment > summary {
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 5px 0;
+}
+.conversation-app .learning-experiment > p {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.conversation-app .experiment-result {
+  margin: 12px 0;
+  padding: 12px;
+  border-left: 3px solid var(--primary);
+  background: var(--surface-soft);
+  font-size: 12px;
+}
+.conversation-app .event-preview {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px dashed var(--primary);
+  border-radius: 7px;
+  background: var(--surface);
+}
+.conversation-app .event-preview ul {
+  padding-left: 18px;
+  line-height: 1.9;
+}
+.conversation-app .prediction-lesson {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 16px;
+  margin-top: 18px;
+  background: var(--surface);
+}
+.conversation-app .prediction-lesson h3 {
+  font-size: 14px;
+  margin: 0 0 12px;
+}
+.conversation-app .prediction-lesson fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+.conversation-app .prediction-lesson legend {
+  font-size: 12px;
+  line-height: 1.8;
+  margin-bottom: 8px;
+}
+.conversation-app .prediction-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  margin: 7px 0;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  min-height: 42px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.conversation-app .prediction-option:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.conversation-app .prediction-option input {
+  accent-color: var(--primary);
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+.conversation-app .prediction-result {
+  padding: 12px;
+  background: var(--surface-soft);
+  border-radius: 7px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.conversation-app .prediction-result > strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.conversation-app .prediction-result > p {
+  margin: 8px 0;
+}
+.conversation-app .prediction-result summary {
+  padding: 8px 0;
+  cursor: pointer;
+}
+.conversation-app .learning-orientation {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  margin: 18px 0;
+  padding: 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.conversation-app .learning-orientation > summary {
+  padding: 12px 0;
+  color: var(--text);
+  cursor: pointer;
+}
+.conversation-app .learning-orientation p {
+  padding-bottom: 12px;
+  line-height: 1.8;
+}
+.conversation-app .learning-orientation ol {
+  padding: 0 0 12px 20px;
+  line-height: 1.9;
+}
+.conversation-app .mcp-boundary-records {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 20px;
+}
+.conversation-app .mcp-boundary-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.conversation-app .mcp-boundary-heading svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+.conversation-app .mcp-boundary-record summary {
+  cursor: pointer;
+  font-size: 12px;
+  padding: 10px 0;
+}
+.conversation-app .mcp-boundary-record .learning-link {
+  margin-top: 4px;
+}
+.conversation-app .mcp-experiment-summary,
+.conversation-app .mcp-experiment-controls {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.conversation-app .mcp-learning-panel h3 {
+  font-size: 14px;
+  margin: 8px 0 12px;
+  line-height: 1.6;
+}
+.conversation-app .mcp-experiment-summary p {
+  font-size: 12px;
+  color: var(--muted);
+}
+.conversation-app .mcp-experiment-metrics {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 11px;
+}
+.conversation-app .mcp-experiment-metrics caption {
+  text-align: left;
+  color: var(--muted);
+  padding-bottom: 8px;
+}
+.conversation-app .mcp-experiment-metrics th,
+.conversation-app .mcp-experiment-metrics td {
+  padding: 9px 6px;
+  border: 1px solid var(--border);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.conversation-app .mcp-experiment-metrics th {
+  background: var(--surface-soft);
+  font-weight: 600;
+}
+.conversation-app .mcp-experiment-evidence {
+  margin: 12px 0;
+  padding: 12px;
+  border-left: 3px solid var(--primary);
+  background: var(--surface-soft);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.conversation-app .mcp-experiment-evidence > strong {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+.conversation-app .mcp-experiment-evidence p {
+  margin: 8px 0;
+}
+.conversation-app .mcp-experiment-evidence summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+@media (max-width: 780px) {
+  .conversation-app .learning-panel {
+    padding: 12px;
+  }
+  .conversation-app .state-comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .conversation-app .learning-controls button,
+  .conversation-app .learning-actions button,
+  .conversation-app .learning-link {
+    min-height: 42px;
+  }
+  .conversation-app .learning-field select,
+  .conversation-app .learning-field textarea,
+  .conversation-app .learning-field input:not([type='range']) {
+    font-size: 16px;
+  }
+  .conversation-app .prediction-lesson {
+    padding: 12px;
+  }
+}

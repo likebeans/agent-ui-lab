@@ -1,0 +1,189 @@
+import { expect, test, type Page } from '@playwright/test';
+
+async function send(page: Page, prompt: string) {
+  await page.getByRole('textbox', { name: '发送消息给 Agent' }).fill(prompt);
+  await page.getByRole('button', { name: '发送消息', exact: true }).click();
+}
+
+test('one conversation moves from streamed events to generated components to a tool application', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  const requests: { url: string; body: any }[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && /\/(api\/agui|api\/a2ui\/surface|mcp)$/.test(request.url()))
+      requests.push({ url: request.url(), body: request.postDataJSON() });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '聊一聊，让界面自然发生。' })).toBeVisible();
+  await page.screenshot({ path: 'test-results/chat-welcome.png' });
+  await send(page, '帮我规划杭州三日游，喜欢慢节奏');
+  const stream = page.getByRole('article', { name: 'AG-UI Agent 回复' });
+  await expect(stream.getByRole('status')).toContainText('已完成');
+  await expect(stream.locator('.chat-itinerary > div')).toHaveCount(3);
+  await stream.getByText('事件如何变成这条回复', { exact: false }).click();
+  await expect(stream.getByText('TEXT_MESSAGE_CONTENT', { exact: true }).first()).toBeVisible();
+  await send(page, '把这些出行需求做成一个表单');
+  const form = page.getByRole('article', { name: 'A2UI Agent 回复' });
+  await expect(form.getByRole('combobox', { name: '目的地', exact: true })).toHaveValue('hangzhou');
+  await expect(form.getByLabel('行程天数', { exact: true })).toHaveValue('3');
+  await form.getByText('声明如何变成 React 组件', { exact: false }).click();
+  await form.getByRole('button', { name: /^定位声明 destination：/ }).click();
+  await expect(form.locator('[data-a2ui-component-id="destination"]')).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  await form.getByText('声明如何变成 React 组件', { exact: false }).click();
+  await form.getByLabel('出行人姓名').fill('学习者');
+  await form.getByRole('combobox', { name: '目的地', exact: true }).selectOption('chengdu');
+  await form.getByRole('button', { name: '生成计划', exact: true }).click();
+  await expect(form.locator('[data-a2ui-component-id="status"]')).toContainText(
+    '已为 学习者 生成 成都 3 天游览计划',
+  );
+  await expect(page.locator('.interaction-message')).toHaveCount(2);
+  await send(page, '打开这个城市的活动应用');
+  const app = page.getByRole('article', { name: 'MCP Apps Agent 回复' });
+  await expect(app.getByRole('status')).toContainText('App 与宿主已连接');
+  const frame = app.frameLocator('iframe');
+  await expect(frame.getByText('人民公园早茶', { exact: true })).toBeVisible();
+  await frame.getByRole('button', { name: '上海', exact: true }).click();
+  await expect(frame.getByText('外滩建筑散步', { exact: true })).toBeVisible();
+  await expect(page.locator('.interaction-message')).toHaveCount(4);
+  await expect(stream).toBeAttached();
+  await expect(form).toBeAttached();
+  await app.getByRole('button', { name: '查看本轮 MCP Apps 协议' }).click();
+  await expect(page.getByRole('complementary', { name: '协议检查器' })).toBeVisible();
+  const aguiInput = requests.find((request) => request.url.endsWith('/api/agui'))!.body;
+  expect(aguiInput.messages.at(-1).content).toContain('杭州三日游');
+  expect(
+    requests.some(
+      (request) =>
+        request.body.method === 'tools/call' && request.body.params.arguments.city === 'chengdu',
+    ),
+  ).toBe(true);
+  await page.screenshot({ path: 'test-results/chat-mcp.png' });
+  await page.getByRole('button', { name: '切换深色模式' }).click();
+  await expect(frame.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.screenshot({ path: 'test-results/chat-dark.png' });
+
+  await form.getByLabel('行程天数', { exact: true }).fill('4');
+  await form.getByRole('button', { name: '重新生成计划', exact: true }).click();
+  await expect(page.locator('.interaction-message')).toHaveCount(6);
+  await frame.getByRole('button', { name: '杭州', exact: true }).click();
+  await expect(page.locator('.interaction-message')).toHaveCount(8);
+  await send(page, '按照现在的需求，再规划一次');
+  const nextPlan = page.getByRole('article', { name: 'AG-UI Agent 回复' }).last();
+  await expect(nextPlan.getByRole('status')).toContainText('已完成');
+  await expect(nextPlan.locator('.chat-itinerary > div')).toHaveCount(4);
+  const followupInput = requests
+    .filter((request) => request.url.endsWith('/api/agui'))
+    .at(-1)!.body;
+  expect(followupInput.threadId).toBe(aguiInput.threadId);
+  expect(followupInput.runId).not.toBe(aguiInput.runId);
+  expect(followupInput.forwardedProps).toMatchObject({ city: '杭州', days: 4 });
+  expect(
+    followupInput.messages.some((message: { content: string }) =>
+      message.content.includes('学习者'),
+    ),
+  ).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('chat recovers from a failed surface and a truncated stream, and discards an abandoned route', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.route(
+    '**/api/a2ui/surface',
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: '表单服务暂不可用' }),
+      }),
+    { times: 1 },
+  );
+  await send(page, '生成上海两日游表单');
+  await expect(page.getByRole('alert')).toContainText('表单服务暂不可用');
+  await send(page, '再生成一个表单');
+  const form = page.getByRole('article', { name: 'A2UI Agent 回复' }).last();
+  await expect(form.getByRole('combobox', { name: '目的地', exact: true })).toHaveValue('shanghai');
+
+  await page.route(
+    '**/api/agui',
+    (route) => {
+      const input = route.request().postDataJSON();
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: `data: ${JSON.stringify({ type: 'RUN_STARTED', threadId: input.threadId, runId: input.runId })}\n\n`,
+      });
+    },
+    { times: 1 },
+  );
+  await send(page, '规划上海两日游');
+  const reply = page.getByRole('article', { name: 'AG-UI Agent 回复' });
+  await expect(reply.getByRole('status')).toContainText('连接已中断');
+  await reply.getByRole('button', { name: '重试这一轮' }).click();
+  await expect(reply.getByRole('status')).toContainText('已完成');
+  await expect(reply.locator('.chat-itinerary > div')).toHaveCount(2);
+
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let started!: () => void;
+  const intercepted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  await page.route(
+    '**/api/chat',
+    async (route) => {
+      started();
+      await held;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          protocol: 'agui',
+          context: { city: '成都', days: 7 },
+          explanation: '迟到的旧请求',
+        }),
+      });
+    },
+    { times: 1 },
+  );
+  await send(page, '规划成都七日游');
+  await intercepted;
+  await page.getByRole('button', { name: '新对话', exact: false }).click();
+  release();
+  await send(page, '生成一个表单');
+  const freshForm = page.getByRole('article', { name: 'A2UI Agent 回复' });
+  await expect(freshForm.getByRole('combobox', { name: '目的地', exact: true })).toHaveValue(
+    'hangzhou',
+  );
+  await expect(freshForm.getByLabel('行程天数', { exact: true })).toHaveValue('3');
+  await expect(page.getByRole('article', { name: 'AG-UI Agent 回复' })).toHaveCount(0);
+});
+
+test('mobile chat supports Enter submission, cancellation, inspection and a fresh thread', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/');
+  await page.getByRole('textbox', { name: '发送消息给 Agent' }).fill('上海两日游');
+  await page.getByRole('textbox', { name: '发送消息给 Agent' }).press('Enter');
+  const reply = page.getByRole('article', { name: 'AG-UI Agent 回复' });
+  await reply.getByRole('button', { name: '取消运行', exact: true }).click();
+  await expect(reply.getByRole('status')).toContainText('已取消');
+  await reply.getByRole('button', { name: '查看本轮 AG-UI 协议' }).click();
+  await expect(page.getByRole('dialog', { name: '本轮协议详情' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
+  await page.screenshot({ path: 'test-results/chat-mobile.png' });
+  await page.getByRole('button', { name: '新对话', exact: true }).click();
+  await expect(page.getByRole('article', { name: 'AG-UI Agent 回复' })).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: '发送消息给 Agent' })).toBeFocused();
+});
