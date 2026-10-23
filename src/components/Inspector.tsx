@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Braces, Check, Copy, Download, Radio, Search, Trash2 } from 'lucide-react';
-import type { TraceEntry } from '../../shared/trace';
+import { findTrace, type TraceEntry, type TraceFocusRequest } from '../../shared/trace';
 import { STATIC_MODE } from '../../shared/runtime';
+import './inspector.css';
 
 export function Inspector({
   entries,
@@ -10,7 +11,7 @@ export function Inspector({
 }: {
   entries: TraceEntry[];
   onClear: () => void;
-  focusRequest?: { label: string; occurrence?: number; token: number };
+  focusRequest?: TraceFocusRequest;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [query, setQuery] = useState('');
@@ -21,8 +22,7 @@ export function Inspector({
   const selectedRow = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!focusRequest || handledFocus.current === focusRequest.token) return;
-    const candidates = entries.filter((entry) => entry.label === focusRequest.label);
-    const target = candidates.at(focusRequest.occurrence ?? -1);
+    const target = findTrace(entries, focusRequest);
     if (!target) {
       setFocusNotice('关联记录尚未到达，或已从本轮检查器中清除。');
       return;
@@ -38,7 +38,9 @@ export function Inspector({
       selectedRow.current?.scrollIntoView({ block: 'nearest' });
   }, [selected, focusRequest]);
   const filtered = entries.filter((entry) =>
-    `${entry.label} ${entry.direction}`.toLowerCase().includes(query.toLowerCase()),
+    `${entry.label} ${entry.direction} ${entry.labId ?? ''} ${entry.threadId ?? ''} ${entry.turnId ?? ''} ${entry.taskId ?? ''} ${entry.runId ?? ''} ${entry.eventType ?? ''}`
+      .toLowerCase()
+      .includes(query.toLowerCase()),
   );
   const current = filtered.find((entry) => entry.id === selected) ?? filtered.at(-1);
   const copied = current !== undefined && copiedId === current.id;
@@ -161,6 +163,23 @@ export function Inspector({
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>
+      {current?.labId && (
+        <details className="trace-identity">
+          <summary>关联身份 · {current.labId}</summary>
+          <dl>
+            {(['labId', 'threadId', 'turnId', 'taskId', 'runId', 'eventType', 'seq'] as const)
+              .filter((key) => current[key] !== undefined)
+              .map((key) => (
+                <div key={key}>
+                  <dt>{key}</dt>
+                  <dd>
+                    <code>{current[key]}</code>
+                  </dd>
+                </div>
+              ))}
+          </dl>
+        </details>
+      )}
       <pre className="payload">
         <code>
           {current

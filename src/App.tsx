@@ -1,10 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowRight,
   ArrowUpRight,
   BookOpen,
-  Boxes,
   Cable,
   Check,
   ChevronRight,
@@ -13,134 +12,30 @@ import {
   ExternalLink,
   FlaskConical,
   Layers3,
-  LayoutTemplate,
   Menu,
   Moon,
-  Radio,
   Route,
   Sparkles,
   Sun,
   Terminal,
   X,
 } from 'lucide-react';
-import type { ProtocolId, TraceEntry, TraceInput } from '../shared/trace';
+import type { TraceEntry, TraceInput, TraceSelector, TraceFocusRequest } from '../shared/trace';
 import { Inspector } from './components/Inspector';
-import { docHref, type DocSlug } from '../shared/doc-navigation';
+import { docHref } from '../shared/doc-navigation';
 import { useTheme } from './useTheme';
 import { labFetch } from '../shared/http';
+import { isExpectedInstance } from '../shared/instance';
+import { labs, getLab, labFromHash, labHref, supportsLabMode } from './labs/registry';
+import { useLabRuntime } from './labs/useLabRuntime';
 import { STATIC_MODE, describeTrace } from '../shared/runtime';
 import { RuntimeNotice } from './components/RuntimeNotice';
 
-const AguiLab = lazy(() => import('./labs/AguiLab'));
-const A2uiLab = lazy(() => import('./labs/A2uiLab'));
-const McpLab = lazy(() => import('./labs/McpLab'));
-
-type Page = 'overview' | ProtocolId | 'roadmap';
+type Page = string;
 type Tab = 'experiment' | 'mechanism' | 'source';
 
-const protocols = {
-  agui: {
-    name: 'AG-UI',
-    subtitle: '让 Agent 的每一步，被界面看见',
-    label: '事件流与状态同步',
-    description: '从一条请求开始，看文本、工具调用和应用状态如何实时抵达前端。',
-    icon: Radio,
-    color: 'purple',
-    number: '01',
-    transport: STATIC_MODE ? '浏览器内事件流' : 'HTTP · SSE',
-    docs: 'https://docs.ag-ui.com',
-    steps: [
-      '发送用户请求',
-      'Agent 产生事件',
-      STATIC_MODE ? '本地流传输' : 'SSE 传输',
-      'Reducer 更新 UI',
-    ],
-    files: ['shared/agui-agent.ts', 'shared/agui.ts', 'src/labs/AguiLab.tsx'],
-    question: '消息还没生成完，界面为什么已经开始更新？',
-    explanation:
-      'Agent 不必等待整个任务完成才返回一个 JSON。它把一次运行拆成有类型的事件；前端顺序消费这些事件，再把文本片段、工具参数和状态变更投影到界面。SSE 是本实验选择的传输方式，AG-UI 的核心是事件契约。',
-    concepts: [
-      [
-        '运行生命周期',
-        'RUN_STARTED → 内容、工具与状态事件 → RUN_FINISHED；失败用 RUN_ERROR。取消请求不等于完成运行。',
-      ],
-      [
-        '文本与工具独立',
-        'TEXT_MESSAGE_CONTENT 增量追加文字；TOOL_CALL_ARGS 拼接参数。工具调用结束和工具结果到达是不同事件。',
-      ],
-      [
-        '共享状态',
-        'STATE_SNAPSHOT 提供完整状态，STATE_DELTA 使用 RFC 6902 JSON Patch 描述变化。前端的任务卡片由状态驱动。',
-      ],
-    ],
-  },
-  a2ui: {
-    name: 'A2UI',
-    subtitle: '让一份声明，生长为真实界面',
-    label: '声明式 UI 与数据绑定',
-    description: '检查组件描述、修改绑定数据，再把表单操作送回服务端。',
-    icon: LayoutTemplate,
-    color: 'teal',
-    number: '02',
-    transport: STATIC_MODE ? 'JSON · 浏览器内' : 'JSON · HTTP',
-    docs: 'https://a2ui.org',
-    steps: ['下发组件描述', '更新数据模型', 'Renderer 渲染', '用户动作回传'],
-    files: ['shared/a2ui.ts', 'shared/a2ui-agent.ts', 'src/labs/A2uiLab.tsx'],
-    question: 'Agent 不写 HTML，怎样决定页面上出现什么？',
-    explanation:
-      '服务端描述“有哪些组件、它们如何组合、值绑定在哪里”。客户端用允许的组件目录把描述映射为自己的原生组件。UI 结构与数据模型分别更新；用户点击后产生结构化动作，让服务端决定下一次变化。',
-    concepts: [
-      [
-        '组件目录',
-        'Renderer 只实例化支持的组件。协议数据不是 JavaScript，也不会被当作 HTML 执行。这个实验明确实现有限组件集合。',
-      ],
-      [
-        '结构与数据分离',
-        '组件通过路径读取数据模型。同一棵组件树可以显示不同的数据；修改表单时，绑定值也同步更新。',
-      ],
-      [
-        '动作形成闭环',
-        '按钮 action 携带已解析的表单值返回服务端，服务端验证后下发更新。真实业务中的鉴权和持久化属于服务端。',
-      ],
-    ],
-  },
-  mcp: {
-    name: 'MCP Apps',
-    subtitle: '让工具结果，成为一个可操作的应用',
-    label: '工具、资源与应用桥接',
-    description: '在沙箱中打开一个工具界面，沿着双向消息看清 Host 与 App 的协作。',
-    icon: Boxes,
-    color: 'amber',
-    number: '03',
-    transport: STATIC_MODE ? 'MCP · InMemoryTransport' : 'MCP · JSON-RPC',
-    docs: 'https://modelcontextprotocol.io/docs/extensions/apps',
-    steps: ['发现工具', '读取 UI 资源', 'App 握手', '调用宿主工具'],
-    files: ['shared/mcp-server.ts', 'src/mcp-app.ts', 'src/labs/McpLab.tsx'],
-    question: '工具为什么可以返回一个应用，而不只是一段文字？',
-    explanation:
-      '工具通过元数据关联一个 ui:// 资源。Host 读取 HTML 资源，把应用放进隔离的 iframe，并通过 AppBridge 与 App 建立 JSON-RPC 通道。应用请求调用工具时，由 Host 代理到 MCP Server。',
-    concepts: [
-      [
-        '工具与资源',
-        'tools/list 发现工具和关联的 resourceUri，resources/read 获得 text/html;profile=mcp-app 资源。工具结果可以同时包含文本和 structuredContent。',
-      ],
-      [
-        'App / Host 分工',
-        'App 负责交互，Host 负责能力协商、工具代理与权限边界。这里使用官方 App、AppBridge 与 PostMessageTransport。',
-      ],
-      [
-        '隔离与能力',
-        '实验仅加载本项目生成的 UI，iframe 不允许同源访问，宿主限制可调用工具。生产环境仍需要独立资源源站、完整 CSP 和权限策略。',
-      ],
-    ],
-  },
-} as const;
-
 function initialPage(hash: string): Page {
-  const value = hash.slice(1);
-  return ['overview', 'agui', 'a2ui', 'mcp', 'roadmap'].includes(value)
-    ? (value as Page)
-    : 'overview';
+  return labFromHash(hash)?.id ?? (hash === '#roadmap' ? 'roadmap' : 'overview');
 }
 
 export function App({
@@ -154,6 +49,11 @@ export function App({
   const [tab, setTab] = useState<Tab>('experiment');
   const [entries, setEntries] = useState<TraceEntry[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [traceFocus, setTraceFocus] = useState<TraceFocusRequest>();
+  const focusSequence = useRef(0);
+  const focusTrace = useCallback((selector: TraceSelector) => {
+    setTraceFocus({ ...selector, token: ++focusSequence.current });
+  }, []);
   const sidebarRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -207,6 +107,7 @@ export function App({
     setPage(initialPage(hash));
     setTab('experiment');
     setEntries([]);
+    setTraceFocus(undefined);
     setMenuOpen(false);
   }, [hash]);
   useEffect(() => {
@@ -218,7 +119,8 @@ export function App({
         if (!response.ok) throw new Error();
         return response.json();
       })
-      .then(() => {
+      .then((value: unknown) => {
+        if (!isExpectedInstance(value)) throw new Error('服务实例不匹配。');
         if (mounted) setHealth('ready');
       })
       .catch(() => {
@@ -232,12 +134,17 @@ export function App({
     };
   }, [healthAttempt]);
 
-  const active = page === 'agui' || page === 'a2ui' || page === 'mcp' ? protocols[page] : null;
-  const chapter = (
-    { agui: 'ag-ui', a2ui: 'a2ui', mcp: 'mcp-apps' } satisfies Record<ProtocolId, DocSlug>
-  )[page as ProtocolId];
+  const selectedLab = getLab(page);
+  const active = selectedLab
+    ? {
+        ...selectedLab.presentation,
+        number: selectedLab.number,
+        files: selectedLab.sourceReferences,
+      }
+    : null;
+  const chapter = selectedLab?.docs;
   function navigate(next: Page) {
-    window.location.hash = next;
+    window.location.hash = getLab(next) ? labHref(next) : next;
   }
 
   return (
@@ -306,15 +213,16 @@ export function App({
             <BookOpen size={18} aria-hidden="true" /> 学习总览
           </a>
           <p className="nav-caption spaced">
-            协议实验室 <span>03</span>
+            能力实验 <span>{String(labs.length).padStart(2, '0')}</span>
           </p>
-          {(Object.keys(protocols) as ProtocolId[]).map((id) => {
-            const item = protocols[id];
+          {labs.map((lab) => {
+            const id = lab.id;
+            const item = { ...lab.presentation, number: lab.number };
             const Icon = item.icon;
             return (
               <a
                 key={id}
-                href={`#${id}`}
+                href={labHref(id)}
                 className={`nav-link ${page === id ? 'active' : ''}`}
                 aria-current={page === id ? 'page' : undefined}
               >
@@ -428,7 +336,7 @@ export function App({
                 <div>
                   <div className="eyebrow">
                     <span className={`protocol-mini ${active.color}`}>{active.number}</span>{' '}
-                    PROTOCOL LAB <span className="eyebrow-divider">/</span> {active.transport}
+                    INTERACTION LAB <span className="eyebrow-divider">/</span> {active.transport}
                   </div>
                   <h1>
                     {active.name}
@@ -440,11 +348,12 @@ export function App({
                 </div>
                 <a
                   className="button secondary docs-button"
-                  href={active.docs}
-                  target="_blank"
-                  rel="noreferrer"
+                  href={active.docs ?? docHref(chapter ?? 'map')}
+                  target={active.docs ? '_blank' : undefined}
+                  rel={active.docs ? 'noreferrer' : undefined}
                 >
-                  官方文档 <ArrowUpRight size={15} aria-hidden="true" />
+                  {active.docs ? '官方文档' : '实验文档'}{' '}
+                  <ArrowUpRight size={15} aria-hidden="true" />
                 </a>
               </div>
               <div className="lab-tabs" role="tablist" aria-label="实验视图">
@@ -523,15 +432,21 @@ export function App({
                 )}
                 <div className="lab-workbench">
                   <div className="experiment-panel">
-                    <Suspense fallback={<div className="empty-state">正在加载实验…</div>}>
-                      {page === 'agui' && <AguiLab onTrace={onTrace} onResetTrace={onResetTrace} />}
-                      {page === 'a2ui' && <A2uiLab onTrace={onTrace} onResetTrace={onResetTrace} />}
-                      {page === 'mcp' && <McpLab onTrace={onTrace} onResetTrace={onResetTrace} />}
-                    </Suspense>
+                    {selectedLab && (
+                      <RegisteredExperiment
+                        key={selectedLab.id}
+                        labId={selectedLab.id}
+                        active={workspaceActive && tab === 'experiment'}
+                        onTrace={onTrace}
+                        onResetTrace={onResetTrace}
+                        focusTrace={focusTrace}
+                      />
+                    )}
                   </div>
                   <Inspector
                     key={page}
-                    entries={entries.filter((entry) => entry.protocol === page)}
+                    entries={entries.filter((entry) => entry.labId === page)}
+                    focusRequest={traceFocus}
                     onClear={onResetTrace}
                   />
                 </div>
@@ -543,7 +458,7 @@ export function App({
                     <button className="text-button" onClick={() => setTab('mechanism')}>
                       查看原理 <ArrowRight size={13} aria-hidden="true" />
                     </button>{' '}
-                    <a className="text-link" href={docHref(chapter)}>
+                    <a className="text-link" href={docHref(chapter ?? 'map')}>
                       阅读完整教程 <BookOpen size={13} aria-hidden="true" />
                     </a>
                   </p>
@@ -578,8 +493,14 @@ export function App({
                       App。这三个实验先把各自边界单独跑通。
                     </p>
                   </div>
-                  <a className="text-link" href={active.docs} target="_blank" rel="noreferrer">
-                    阅读官方协议定义 <ExternalLink size={14} aria-hidden="true" />
+                  <a
+                    className="text-link"
+                    href={active.docs ?? docHref(chapter ?? 'map')}
+                    target={active.docs ? '_blank' : undefined}
+                    rel={active.docs ? 'noreferrer' : undefined}
+                  >
+                    {active.docs ? '阅读官方协议定义' : '阅读实验接入说明'}{' '}
+                    <ExternalLink size={14} aria-hidden="true" />
                   </a>
                 </section>
               )}
@@ -594,7 +515,7 @@ export function App({
                   <h2>从消息，追到实现。</h2>
                   <p className="reading-lead">
                     按下面的顺序在编辑器里打开文件，和右侧检查器中的 payload 对照。
-                    <a className="text-link" href={docHref(chapter)}>
+                    <a className="text-link" href={docHref(chapter ?? 'map')}>
                       打开 {active.name} 完整学习笔记
                     </a>
                     ，可以边读教程边返回当前实验。
@@ -616,13 +537,7 @@ export function App({
                     ))}
                   </div>
                   <h3>动手改一处，再观察差异</h3>
-                  <p>
-                    {page === 'agui'
-                      ? '修改服务端每次发出的文本片段或 STATE_DELTA，观察事件顺序、工具执行状态与页面变化。试试中途取消和故障场景。'
-                      : page === 'a2ui'
-                        ? '修改组件描述中的标签或绑定路径，比较结构更新和数据更新。再添加一个受支持的组件，观察 Renderer 如何处理它。'
-                        : '修改工具的 structuredContent，重新打开嵌入式应用。比较 tools/call 与 ui/notifications/tool-result 消息如何出现在不同边界。'}
-                  </p>
+                  <p>{active.exercise}</p>
                   <div className="terminal-block">
                     <Terminal size={16} aria-hidden="true" />
                     <code>npm run check</code>
@@ -646,6 +561,31 @@ export function App({
   );
 }
 
+function RegisteredExperiment({
+  labId,
+  active,
+  onTrace,
+  onResetTrace,
+  focusTrace,
+}: {
+  labId: string;
+  active: boolean;
+  onTrace: (entry: TraceInput) => void;
+  onResetTrace: () => void;
+  focusTrace: (selector: TraceSelector) => void;
+}) {
+  const lab = getLab(labId)!;
+  const identity = useMemo(() => ({ labId }), [labId]);
+  const runtime = useLabRuntime(identity, onTrace, focusTrace);
+  const Component = lab.Component;
+  if (!supportsLabMode(lab, runtime.mode)) return <p role="status">此实验暂不支持当前运行模式。</p>;
+  return (
+    <Suspense fallback={<div className="empty-state">正在加载实验…</div>}>
+      <Component runtime={runtime} active={active} onResetTrace={onResetTrace} />
+    </Suspense>
+  );
+}
+
 function Overview({ navigate }: { navigate: (page: Page) => void }) {
   return (
     <>
@@ -658,7 +598,7 @@ function Overview({ navigate }: { navigate: (page: Page) => void }) {
             让 AI 不止于对话<span className="accent-dot">。</span>
           </h1>
           <p>
-            在真实界面里，拆解智能交互背后的协议。
+            面向前端开发者的交互式学习与参考实现。
             <br className="mobile-break" /> 从第一条消息，到一个完整应用。
           </p>
         </div>
@@ -736,16 +676,17 @@ function Overview({ navigate }: { navigate: (page: Page) => void }) {
       </section>
       <div className="section-heading">
         <div>
-          <span className="eyebrow">THE PROTOCOL COLLECTION</span>
-          <h2>三个协议，三种能力。</h2>
+          <span className="eyebrow">THE LAB COLLECTION</span>
+          <h2>按能力，选择一个实验。</h2>
         </div>
         <span className="section-caption">
           独立理解，也能协同工作 <ArrowDown size={14} aria-hidden="true" />
         </span>
       </div>
       <div className="protocol-grid">
-        {(Object.keys(protocols) as ProtocolId[]).map((id) => {
-          const item = protocols[id];
+        {labs.map((lab) => {
+          const id = lab.id;
+          const item = { ...lab.presentation, number: lab.number };
           const Icon = item.icon;
           return (
             <button key={id} className={`protocol-card ${item.color}`} onClick={() => navigate(id)}>

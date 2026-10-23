@@ -5,20 +5,23 @@ import { installAguiRoutes } from './agui';
 import { installA2uiRoutes } from './a2ui';
 import { installMcpRoutes } from './mcp';
 import { installChatRoutes } from './chat';
+import { installLabRoutes } from './labs/index';
+import { allowedOrigins, loadRuntimeConfig, type RuntimeConfig } from '../config/runtime.ts';
+import type { LabHealth } from '../shared/instance.ts';
 
-export function createServer() {
+export function createServer(
+  config: RuntimeConfig = loadRuntimeConfig(),
+  options: { production?: boolean } = {},
+) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '128kb' }));
 
   // This learning server is intentionally local. Reject foreign browser origins.
-  const apiPort = Number(process.env.PORT || 3100);
-  const allowedOrigins = new Set(
-    [5173, apiPort].flatMap((port) => [`http://127.0.0.1:${port}`, `http://localhost:${port}`]),
-  );
+  const origins = allowedOrigins(config);
   app.use((request, response, next) => {
     const origin = request.headers.origin;
-    if (origin && !allowedOrigins.has(origin)) {
+    if (origin && !origins.has(origin)) {
       response.status(403).json({ error: '此学习服务仅接受本地实验台的请求。' });
       return;
     }
@@ -29,15 +32,18 @@ export function createServer() {
     response.json({
       status: 'ok',
       mode: 'local-deterministic',
+      instanceId: config.instanceId,
+      sourceId: config.sourceId,
       protocols: ['AG-UI', 'A2UI', 'MCP Apps'],
-    }),
+    } satisfies LabHealth),
   );
   installChatRoutes(app);
   installAguiRoutes(app);
   installA2uiRoutes(app);
   installMcpRoutes(app);
+  installLabRoutes(app);
 
-  if (process.argv.includes('--production')) {
+  if (options.production) {
     const dist = fileURLToPath(new URL('../dist', import.meta.url));
     app.use(express.static(dist));
     app.get('/', (_request, response) => response.sendFile(path.join(dist, 'index.html')));
@@ -66,17 +72,21 @@ export function createServer() {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const port = Number(process.env.PORT || 3100);
-  const server = createServer().listen(port, '127.0.0.1', () => {
-    console.log(`Agent UI Lab API: http://127.0.0.1:${port}`);
-    console.log(
-      process.argv.includes('--production')
-        ? 'Serving production build.'
-        : 'Start the frontend with npm run dev:web, or run both with npm run dev.',
-    );
-  });
+  const config = loadRuntimeConfig();
+  const server = createServer(config, { production: process.argv.includes('--production') }).listen(
+    config.apiPort,
+    '127.0.0.1',
+    () => {
+      console.log(`Agent UI Lab API: ${config.apiOrigin} (${config.instanceId})`);
+      console.log(
+        process.argv.includes('--production')
+          ? 'Serving production build.'
+          : 'Start the frontend with npm run dev:web, or run both with npm run dev.',
+      );
+    },
+  );
   server.on('error', (error) => {
-    console.error(error.message);
+    console.error(`API could not listen on ${config.apiOrigin}: ${error.message}`);
     process.exitCode = 1;
   });
   const shutdown = () => {

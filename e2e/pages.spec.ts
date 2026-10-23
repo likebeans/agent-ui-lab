@@ -101,6 +101,18 @@ test('Pages runs the three chat protocols, learning experiments and documents en
   await page.getByRole('button', { name: '切换深色模式', exact: true }).click();
   await expect(frame.locator('html')).toHaveAttribute('data-theme', 'dark');
 
+  await form.getByLabel('行程天数', { exact: true }).fill('4');
+  await form.getByRole('button', { name: '重新生成计划', exact: true }).click();
+  await expect(form.locator('[data-a2ui-component-id="status"]')).toContainText(
+    '成都 4 天游览计划',
+  );
+  await frame.getByRole('button', { name: '杭州', exact: true }).click();
+  await expect(frame.getByText('西湖清晨步道', { exact: true })).toBeVisible();
+  await send(page, '按照现在的需求，再规划一次');
+  const nextPlan = page.getByRole('article', { name: 'AG-UI Agent 回复', exact: true }).last();
+  await expect(nextPlan.getByRole('status')).toContainText('已完成');
+  await expect(nextPlan.locator('.chat-itinerary > div')).toHaveCount(4);
+
   await page.getByRole('link', { name: '打开学习文档', exact: true }).click();
   await expect(page.getByRole('article', { name: '学习地图', exact: true })).toBeVisible();
   await page.goto('./#docs/project');
@@ -161,6 +173,39 @@ test('Pages independent labs preserve cancellation, failure, truncation and Surf
     await expect(page.getByRole('status')).toHaveText('App 与宿主已连接');
     await page.getByRole('button', { name: '关闭 App', exact: true }).click();
   }
+  verify();
+});
+
+test('Pages discovers the protocol-free lab and its nested documentation under the configured base', async ({
+  page,
+}) => {
+  const verify = observeStaticRequests(page);
+  await page.goto('./#labs/foundation');
+  const lab = page.getByRole('region', { name: '实验接入示例操作区' });
+  await lab.getByLabel('要观察的内容').fill('  静态🌱  ');
+  await lab.getByRole('button', { name: '运行接入示例', exact: true }).click();
+  await expect(lab.getByRole('status')).toContainText('3 个字符');
+  await lab.getByRole('button', { name: '定位本次结果记录' }).click();
+  const inspector = page.getByRole('complementary', { name: '协议检查器' });
+  await expect(inspector.locator('.payload')).toContainText('deterministic-fixture');
+  await expect(inspector.locator('.trace-list')).toContainText('browser-agent→client');
+  await inspector.getByText('关联身份 · foundation', { exact: true }).click();
+  await expect(inspector.locator('.trace-identity')).toContainText('foundation/result');
+  await page.getByRole('link', { name: '打开学习文档', exact: true }).click();
+  await expect(page).toHaveURL(/#docs\/labs%2Ffoundation$/);
+  await page.reload();
+  const reader = page.getByRole('region', { name: '学习文档', exact: true });
+  await expect(reader.getByRole('heading', { level: 1 })).toContainText('W0：实验基础与并行开发');
+  await reader
+    .getByRole('article')
+    .getByRole('link', { name: '实验接入示例', exact: true })
+    .click();
+  await expect(page).toHaveURL(/#labs\/foundation$/);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await lab.getByLabel('要观察的内容').fill('手机');
+  await lab.getByRole('button', { name: '运行接入示例', exact: true }).click();
+  await expect(lab.getByRole('status')).toContainText('2 个字符');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
   verify();
 });
 

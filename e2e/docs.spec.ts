@@ -28,7 +28,7 @@ test('reader renders Markdown chapters, searches full text and follows links and
   await expect(page).toHaveURL(/#docs\/map$/);
   await expect(reader(page).getByRole('heading', { level: 1 })).toContainText('Agent UI 学习地图');
   const chapters = reader(page).getByRole('navigation', { name: '学习章节' });
-  await expect(chapters.getByRole('link')).toHaveCount(10);
+  await expect(chapters.getByRole('link')).toHaveCount(11);
   const map = reader(page).getByRole('article', { name: '学习地图', exact: true });
   await expect(map.getByRole('table').first()).toContainText('Agent 在执行过程中发生了什么？');
 
@@ -73,7 +73,7 @@ test('reader renders Markdown chapters, searches full text and follows links and
   await reader(page).getByRole('button', { name: '清空文档搜索' }).click();
   await expect(search).toHaveValue('');
   await expect(search).toBeFocused();
-  await expect(chapters.getByRole('link')).toHaveCount(10);
+  await expect(chapters.getByRole('link')).toHaveCount(11);
 
   const stableCode = await reader(page).locator('pre').first().elementHandle();
   await search.fill('PostMessageTransport');

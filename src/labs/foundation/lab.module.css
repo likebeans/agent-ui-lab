@@ -1,0 +1,43 @@
+.root {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+  min-width: 0;
+}
+
+.root h2 {
+  font-size: 20px;
+}
+
+.root form {
+  display: grid;
+  gap: 10px;
+}
+
+.root input {
+  width: 100%;
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.result {
+  display: grid;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+@media (max-width: 600px) {
+  .root {
+    padding: 16px;
+  }
+}

@@ -1,6 +1,8 @@
 import { EventSchemas } from '@ag-ui/core/schemas';
 import { z } from 'zod';
 import { routeChat } from './chat-agent';
+import { LAB_INSTANCE_ID } from './instance';
+import { staticLabFetch } from './labs/static-handlers';
 import {
   createInitialA2uiMessages,
   createA2uiActionMessages,
@@ -25,7 +27,9 @@ export async function staticFetch(path: string, options: RequestInit = {}): Prom
   try {
     const body = typeof options.body === 'string' ? JSON.parse(options.body) : undefined;
     if (path === '/api/health' && method === 'GET')
-      return json({ status: 'ok', mode: 'browser-static' });
+      return json({ status: 'ok', mode: 'browser-static', instanceId: LAB_INSTANCE_ID });
+    const labResponse = await staticLabFetch(path, options);
+    if (labResponse) return labResponse;
     if (path === '/api/chat' && method === 'POST') return json(routeChat(body));
     if (path === '/api/a2ui/surface' && (method === 'GET' || method === 'POST'))
       return json({ messages: createInitialA2uiMessages(body), agent: 'deterministic-fixture' });

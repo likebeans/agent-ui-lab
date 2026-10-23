@@ -1,10 +1,10 @@
 import {
   Component,
   Suspense,
-  lazy,
   useCallback,
   useEffect,
   useRef,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -14,75 +14,43 @@ import {
   ArrowUp,
   BookOpen,
   Bot,
-  Boxes,
   Braces,
   Check,
   ChevronRight,
   Code2,
-  LayoutTemplate,
   LoaderCircle,
   MessageSquare,
   Moon,
   PanelRightClose,
   PanelRightOpen,
   Plus,
-  Radio,
   Sparkles,
   Sun,
   X,
 } from 'lucide-react';
-import type { ChatContext, ChatRequest, ChatRoute, ChatTurnProps } from '../shared/chat';
-import type { ProtocolId, TraceEntry, TraceInput } from '../shared/trace';
-import { fetchJson, errorMessage, labFetch } from '../shared/http';
+import type { LabContext, LabChatRequest, LabChatTurnProps } from '../shared/lab-contract';
+import { mergeLabContext } from '../shared/lab-context';
+import type { TraceEntry, TraceInput, TraceSelector, TraceFocusRequest } from '../shared/trace';
+import { errorMessage, labFetch } from '../shared/http';
+import { isExpectedInstance } from '../shared/instance';
+import { chatLabs, getLab } from './labs/registry';
+import { resolveChatLab } from './labs/chat';
+import { useLabRuntime } from './labs/useLabRuntime';
+import { tripContext } from './labs/legacy';
 import { STATIC_MODE, describeTrace } from '../shared/runtime';
 import { RuntimeNotice } from './components/RuntimeNotice';
 import { Inspector } from './components/Inspector';
-import { docHref, type DocSlug } from '../shared/doc-navigation';
+import { docHref } from '../shared/doc-navigation';
 import { useTheme } from './useTheme';
 import './chat.css';
 import './learning.css';
 
-const AguiTurn = lazy(() =>
-  import('./components/AguiChatTurn').then((module) => ({ default: module.AguiChatTurn })),
-);
-const A2uiTurn = lazy(() =>
-  import('./labs/A2uiLab').then((module) => ({ default: module.A2uiChatTurn })),
-);
-const McpTurn = lazy(() =>
-  import('./labs/McpLab').then((module) => ({ default: module.McpChatTurn })),
-);
-
-const protocolInfo = {
-  agui: {
-    name: 'AG-UI',
-    icon: Radio,
-    short: '事件驱动回复',
-    detail: '文本、工具调用、状态变更通过同一条事件流，变成消息里的不同界面。',
-    prompt: '帮我规划杭州三日游，喜欢慢节奏和本地小吃',
-    suggestion: '把这些出行需求做成一个可填写的表单',
-    source: 'shared/agui-agent.ts → shared/agui.ts → AguiChatTurn',
-  },
-  a2ui: {
-    name: 'A2UI',
-    icon: LayoutTemplate,
-    short: '声明生成组件',
-    detail: '服务端提供组件声明与数据，聊天宿主用受支持的 React 组件渲染，交互再产生 action。',
-    prompt: '生成一个成都两日游的需求表单，我来补充信息',
-    suggestion: '打开这个城市的活动应用，让我挑一挑',
-    source: 'shared/a2ui-agent.ts → A2UI schema → SurfaceRenderer',
-  },
-  mcp: {
-    name: 'MCP Apps',
-    icon: Boxes,
-    short: '工具自带应用',
-    detail: 'MCP 工具关联 ui:// 资源，宿主读取 HTML，完成 App 握手后在消息中展示它。',
-    prompt: '打开上海的城市活动应用',
-    suggestion: '再帮我规划一个三日游，加入散步路线',
-    source: 'tools/list → resources/read → AppBridge → iframe App',
-  },
-} as const;
-
-type Turn = { request: ChatRequest; explanation: string; summary?: string; entries: TraceEntry[] };
+type Turn = {
+  request: LabChatRequest;
+  explanation: string;
+  summary?: string;
+  entries: TraceEntry[];
+};
 type Message = {
   id: string;
   role: 'user' | 'assistant';
@@ -90,7 +58,7 @@ type Message = {
   turnId?: string;
   interaction?: boolean;
 };
-const initialContext: ChatContext = { city: '杭州', days: 3 };
+const initialContext: LabContext = { trip: { city: '杭州', days: 3 } };
 
 class TurnBoundary extends Component<
   { children: ReactNode; onFailure: () => void },
@@ -130,9 +98,9 @@ function TurnContent({
   onComplete: (id: string, summary: string) => void;
   onInteraction: (
     id: string,
-    exchange: { user: string; assistant: string; context?: Partial<ChatContext> },
+    exchange: { user: string; assistant: string; context?: LabContext },
   ) => void;
-  onInspect: (id: string, label?: string, occurrence?: number) => void;
+  onInspect: (id: string, selector?: TraceSelector) => void;
 }) {
   const trace = useCallback(
     (entry: TraceInput) => onTrace(turn.request.id, entry),
@@ -143,19 +111,30 @@ function TurnContent({
     [onComplete, turn.request.id],
   );
   const interact = useCallback(
-    (exchange: { user: string; assistant: string; context?: Partial<ChatContext> }) =>
+    (exchange: { user: string; assistant: string; context?: LabContext }) =>
       onInteraction(turn.request.id, exchange),
     [onInteraction, turn.request.id],
   );
-  const info = protocolInfo[turn.request.protocol];
+  const lab = getLab(turn.request.labId)!;
+  const info = lab.presentation;
   const Icon = info.icon;
-  const props: ChatTurnProps = {
+  const identity = useMemo(
+    () => ({ labId: lab.id, threadId: turn.request.threadId, turnId: turn.request.id }),
+    [lab.id, turn.request],
+  );
+  const focusTrace = useCallback(
+    (selector: TraceSelector) => onInspect(turn.request.id, selector),
+    [onInspect, turn.request.id],
+  );
+  const runtime = useLabRuntime(identity, trace, focusTrace);
+  const Content = lab.ChatComponent!;
+  const props: LabChatTurnProps = {
+    runtime,
     active,
     request: turn.request,
-    onTrace: trace,
     onComplete: complete,
     onInteraction: interact,
-    onInspectTrace: (label, occurrence) => onInspect(turn.request.id, label, occurrence),
+    onInspectTrace: focusTrace,
   };
   return (
     <article
@@ -168,7 +147,7 @@ function TurnContent({
       <div className="assistant-body">
         <div className="message-byline">
           <strong>Agent UI Agent</strong>
-          <span className={`protocol-tag ${turn.request.protocol}`}>
+          <span className={`protocol-tag ${turn.request.labId}`}>
             <Icon size={12} />
             {info.name}
           </span>
@@ -182,13 +161,7 @@ function TurnContent({
               </p>
             }
           >
-            {turn.request.protocol === 'agui' ? (
-              <AguiTurn {...props} />
-            ) : turn.request.protocol === 'a2ui' ? (
-              <A2uiTurn {...props} />
-            ) : (
-              <McpTurn {...props} />
-            )}
+            <Content {...props} />
           </Suspense>
         </TurnBoundary>
         <button
@@ -201,14 +174,7 @@ function TurnContent({
           {turn.entries.length} 条协议消息<span>查看这一轮如何工作</span>
           <ArrowRight size={13} />
         </button>
-        <a
-          className="turn-doc-link"
-          href={docHref(
-            (
-              { agui: 'ag-ui', a2ui: 'a2ui', mcp: 'mcp-apps' } satisfies Record<ProtocolId, DocSlug>
-            )[turn.request.protocol],
-          )}
-        >
+        <a className="turn-doc-link" href={docHref(lab.docs)}>
           <BookOpen size={14} aria-hidden="true" /> 阅读 {info.name} 完整教程
           <ArrowRight size={13} aria-hidden="true" />
         </a>
@@ -221,17 +187,14 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [prompt, setPrompt] = useState('');
-  const [mode, setMode] = useState<'auto' | ProtocolId>('auto');
-  const [context, setContext] = useState<ChatContext>(initialContext);
+  const [mode, setMode] = useState('auto');
+  const [context, setContext] = useState<LabContext>(initialContext);
   const [pending, setPending] = useState<string | null>(null);
   const [routing, setRouting] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [traceFocus, setTraceFocus] = useState<{
-    turnId: string;
-    label: string;
-    occurrence?: number;
-    token: number;
-  } | null>(null);
+  const [traceFocus, setTraceFocus] = useState<(TraceFocusRequest & { turnId: string }) | null>(
+    null,
+  );
   const focusSequence = useRef(0);
   const [inspectorOpen, setInspectorOpen] = useState(() => window.innerWidth >= 1280);
   const [compact, setCompact] = useState(() => window.innerWidth < 1280);
@@ -271,6 +234,10 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     void labFetch('/api/health', { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error();
+        return response.json();
+      })
+      .then((value: unknown) => {
+        if (!isExpectedInstance(value)) throw new Error('服务实例不匹配。');
         if (active) setHealth('ready');
       })
       .catch(() => {
@@ -342,9 +309,10 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     setPending((current) => (current === id ? null : current));
   }, []);
   const onInteraction = useCallback(
-    (id: string, exchange: { user: string; assistant: string; context?: Partial<ChatContext> }) => {
+    (id: string, exchange: { user: string; assistant: string; context?: LabContext }) => {
       if (!activeTurns.current.has(id)) return;
-      if (exchange.context) setContext((previous) => ({ ...previous, ...exchange.context }));
+      const patch = exchange.context;
+      if (patch) setContext((previous) => mergeLabContext(previous, patch));
       setMessages((previous) =>
         previous.some((message) => message.turnId === id)
           ? [
@@ -378,24 +346,18 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     follow.current = true;
     setMessages((previous) => [...previous, { id: `user-${id}`, role: 'user', text }]);
     try {
-      const route = await fetchJson<ChatRoute>('/api/chat', {
-        method: 'POST',
-        body: JSON.stringify({ prompt: text, mode, context }),
-        signal: controller.signal,
-      });
+      const route = await resolveChatLab(text, mode, context, controller.signal);
       if (epoch !== generation.current) return;
-      if (!['agui', 'a2ui', 'mcp'].includes(route.protocol))
-        throw new Error('服务端返回了未知的协议。');
       const history = messages.flatMap((message) => {
         const turn = turns.find((item) => item.request.id === message.turnId);
         const content = message.text ?? turn?.summary;
         return content ? [{ id: message.id, role: message.role, content }] : [];
       });
-      const request: ChatRequest = {
+      const request: LabChatRequest = {
         id,
         threadId: threadId.current,
         prompt: text,
-        protocol: route.protocol,
+        labId: route.labId,
         context: route.context,
         history: history.slice(-48),
       };
@@ -444,12 +406,13 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     input.current?.focus();
   }
 
-  function inspectTurn(id: string, label?: string, occurrence?: number) {
+  const inspectTurn = useCallback((id: string, selector?: TraceSelector) => {
     setSelectedId(id);
-    setTraceFocus(label ? { turnId: id, label, occurrence, token: ++focusSequence.current } : null);
+    setTraceFocus(selector ? { ...selector, turnId: id, token: ++focusSequence.current } : null);
     setInspectorOpen(true);
-  }
-  const lastProtocol = turns.at(-1)?.request.protocol;
+  }, []);
+  const lastLab = getLab(turns.at(-1)?.request.labId ?? '');
+  const trip = tripContext(context);
 
   return (
     <div className={`conversation-app ${inspectorOpen ? 'with-inspector' : ''}`}>
@@ -473,8 +436,9 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
         </div>
         <div className="chat-sidebar-guide">
           <div className="chat-sidebar-label">在聊天中探索</div>
-          {(Object.keys(protocolInfo) as ProtocolId[]).map((id) => {
-            const info = protocolInfo[id];
+          {chatLabs.map((lab) => {
+            const id = lab.id;
+            const info = { ...lab.presentation, ...lab.chat! };
             const Icon = info.icon;
             return (
               <button
@@ -527,7 +491,7 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
             <strong>Agent 对话</strong>
             <span className="chat-header-divider" />
             <span className="chat-context">
-              {turns.length ? `${context.city} · ${context.days} 天` : '从对话到界面'}
+              {turns.length ? `${trip.city} · ${trip.days} 天` : '从对话到界面'}
             </span>
           </div>
           <div className="chat-top-actions">
@@ -636,8 +600,9 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
                       从下面一句开始，观察同一段对话怎样长出不同的 UI。
                     </p>
                     <div className="conversation-starters">
-                      {(Object.keys(protocolInfo) as ProtocolId[]).map((id) => {
-                        const info = protocolInfo[id];
+                      {chatLabs.map((lab) => {
+                        const id = lab.id;
+                        const info = { ...lab.presentation, ...lab.chat! };
                         const Icon = info.icon;
                         return (
                           <button
@@ -650,13 +615,7 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
                               <Icon size={17} />
                             </span>
                             <span>
-                              <strong>
-                                {id === 'agui'
-                                  ? '帮我规划杭州三日游'
-                                  : id === 'a2ui'
-                                    ? '生成一个出行需求表单'
-                                    : '打开城市活动应用'}
-                              </strong>
+                              <strong>{info.starter}</strong>
                               <small>
                                 {info.short} · {info.name}
                               </small>
@@ -721,14 +680,11 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
                 </p>
               </div>
             )}
-            {!busy && lastProtocol && (
+            {!busy && lastLab?.chat && (
               <div className="follow-up">
                 <span>继续这个对话</span>
-                <button
-                  type="button"
-                  onClick={() => void send(protocolInfo[lastProtocol].suggestion)}
-                >
-                  {protocolInfo[lastProtocol].suggestion}
+                <button type="button" onClick={() => void send(lastLab.chat!.suggestion)}>
+                  {lastLab.chat!.suggestion}
                   <ArrowRight size={14} />
                 </button>
               </div>
@@ -798,9 +754,11 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
                   onChange={(event) => setMode(event.target.value as typeof mode)}
                 >
                   <option value="auto">按需求选择示例</option>
-                  <option value="agui">AG-UI · 事件流</option>
-                  <option value="a2ui">A2UI · 生成组件</option>
-                  <option value="mcp">MCP Apps · 工具应用</option>
+                  {chatLabs.map((lab) => (
+                    <option key={lab.id} value={lab.id}>
+                      {lab.presentation.name} · {lab.chat!.short}
+                    </option>
+                  ))}
                 </select>
               </label>
               <span className="composer-key-hint">Enter 发送 · Shift + Enter 换行</span>
@@ -853,7 +811,7 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
               </span>
               <h2>
                 {selectedTurn
-                  ? protocolInfo[selectedTurn.request.protocol].name
+                  ? getLab(selectedTurn.request.labId)?.presentation.name
                   : '聊天背后，正在发生什么？'}
               </h2>
               <p>
@@ -884,7 +842,7 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
               <Braces size={14} />
               <span>
                 {selectedTurn
-                  ? protocolInfo[selectedTurn.request.protocol].source
+                  ? getLab(selectedTurn.request.labId)?.chat?.source
                   : '每条消息都来自实际 HTTP、SSE 或 App 桥接'}
               </span>
             </div>

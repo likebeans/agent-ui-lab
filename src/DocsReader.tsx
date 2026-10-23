@@ -313,10 +313,10 @@ export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
                   skipHtml
                   urlTransform={(url, key) => {
                     if (key === 'src') {
-                      const image = resolveDocImage(url, document.slug);
+                      const image = resolveDocImage(url, document.slug, documents);
                       return image ? `${import.meta.env.BASE_URL}${image}` : '';
                     }
-                    return defaultUrlTransform(resolveDocLink(url, document.slug) ?? '');
+                    return defaultUrlTransform(resolveDocLink(url, document.slug, documents) ?? '');
                   }}
                   components={markdownComponents}
                 >

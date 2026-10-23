@@ -1,9 +1,14 @@
 import { defineConfig } from '@playwright/test';
+import { loadRuntimeConfig, reuseExistingServer } from './config/runtime.ts';
 
-const base = process.env.PAGES_TEST_PATH ?? '/pages-test/';
-const origin = 'http://127.0.0.1:4173';
+const config = loadRuntimeConfig();
+const base = config.environment.PAGES_TEST_PATH ?? '/pages-test/';
+const origin = config.previewOrigin;
+// The specs use this path when checking subpath assets and network isolation.
+process.env.PAGES_TEST_PATH = base;
 
 export default defineConfig({
+  globalSetup: './config/playwright-pages-health.ts',
   testDir: './e2e',
   testMatch: '**/pages.spec.ts',
   fullyParallel: false,
@@ -13,19 +18,19 @@ export default defineConfig({
   reporter: 'list',
   use: {
     baseURL: `${origin}${base}`,
-    channel: process.env.PLAYWRIGHT_CHANNEL === 'chromium' ? undefined : 'chrome',
+    channel: config.environment.PLAYWRIGHT_CHANNEL === 'chromium' ? undefined : 'chrome',
     viewport: { width: 1440, height: 1000 },
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
   webServer: {
     command:
-      process.env.PAGES_SKIP_BUILD === '1'
+      config.environment.PAGES_SKIP_BUILD === '1'
         ? 'npm run preview:pages'
         : 'npm run build:pages && npm run preview:pages',
-    env: { PAGES_BASE_PATH: base },
+    env: { ...config.environment, PAGES_BASE_PATH: base },
     url: `${origin}${base}`,
-    reuseExistingServer: false,
+    reuseExistingServer: reuseExistingServer(config.environment),
     stdout: 'pipe',
     timeout: 120_000,
   },

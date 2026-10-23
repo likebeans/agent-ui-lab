@@ -1,8 +1,8 @@
 # Agent UI Lab
 
-**在一个 Agent 聊天框里，学习事件怎样驱动界面、声明怎样生成组件、工具怎样提供应用。**
+**面向前端开发者的 Agent UI 交互式学习与参考实现仓库。**
 
-Agent UI Lab 是一个面向前端开发者的 Agent UI 学习项目。它把 **AG-UI、A2UI、MCP Apps** 放进可操作的旅行对话中：你可以规划行程、填写生成表单、打开工具 App，再沿真实协议消息追到状态变化和源码实现。
+从实际操作出发，追溯消息、状态和源码，再把能力迁移到自己的业务。Agent UI Lab 提供聊天工作台、独立能力实验和学习文档。它把 **AG-UI、A2UI、MCP Apps** 放进可操作的旅行对话中：你可以规划行程、填写生成表单、打开工具 App，再沿真实协议消息追到状态变化和源码实现。
 
 无需模型密钥即可运行。当前 Agent 使用确定性规则与样本数据，**没有调用大语言模型（LLM）**。本地模式实际执行 HTTP、服务器发送事件（SSE）、MCP 工具调用和 iframe 通信；GitHub Pages 静态学习版在浏览器内运行同一套生成与校验逻辑，并保留真实的 App / Host 通信。
 
@@ -133,7 +133,25 @@ npm run dev
 | 前端      | `http://127.0.0.1:5173` | 聊天、协议检查器、独立实验和文档          |
 | API / MCP | `http://127.0.0.1:3100` | 规则 Agent、SSE、表单动作、工具与 UI 资源 |
 
-两个端口都需要空闲，Vite 不会自动换端口。前端将 `/api` 和 `/mcp` 代理到本地后端，无需配置模型密钥。首页是聊天，独立实验入口为 `/#agui`、`/#a2ui`、`/#mcp`，文档入口为 `/#docs/map`。
+两个端口都需要空闲，启动器会在冲突时失败，不会自动换端口。前端将 `/api` 和 `/mcp` 代理到本地后端，无需配置模型密钥。首页是聊天，标准实验入口为 `/#labs/agui`、`/#labs/a2ui`、`/#labs/mcp`，原有 `/#agui`、`/#a2ui`、`/#mcp` 继续兼容；文档入口为 `/#docs/map`。
+
+### 多 worktree 并行开发
+
+每个 worktree 可把 `.env.example` 复制为 `.env.local`，设置独立端口与实例名：
+
+```dotenv
+LAB_WEB_PORT=5181
+LAB_API_PORT=3111
+LAB_PREVIEW_PORT=4181
+LAB_INSTANCE_ID=recovery
+LAB_DATA_DIR=.lab-data/recovery
+```
+
+优先级为进程环境变量 → `.env.local` → `.env` → 默认值。开发、生产预览、Pages 预览、代理、Origin 校验、测试和截图都使用同一配置。`/api/health` 返回实例身份，界面和测试会检查连接归属。未设置实例名时按 checkout 路径生成。
+
+Playwright 默认自己启动服务；需要复用当前 worktree 的开发服务时设置 `LAB_REUSE_EXISTING_SERVER=1`，仍会验证 HTML 与 API 身份。各 worktree 使用独立数据和构建目录，同一 worktree 的普通 / Pages 构建按顺序执行。
+
+新增实验从 `src/labs/<id>/manifest.ts` 接入导航和懒加载，教程放在 `docs/labs/<id>.md` 自动进入搜索与阅读器。完整接口、目录归属和示例见 [W0：实验基础与并行开发](docs/labs/foundation.md)，也可在界面打开“实验接入示例”。
 
 ### 检查与构建
 
@@ -157,7 +175,7 @@ npm start             # 用本地 Node 服务预览构建产物
 npm run screenshots:readme
 ```
 
-脚本会实际操作三种协议、运行学习实验、打开文档，并将截图保存到 `public/readme/screenshots/`。图片使用仓库内的相对路径，GitHub README 可直接显示，构建后也可由前端阅读器加载。脚本默认访问 `http://127.0.0.1:5173`，可通过 `README_BASE_URL` 指定地址。
+脚本会实际操作三种协议、运行学习实验、打开文档，并将截图保存到 `public/readme/screenshots/`。图片使用仓库内的相对路径，GitHub README 可直接显示，构建后也可由前端阅读器加载。脚本默认访问配置中的前端地址，可通过 `README_BASE_URL` 指定地址；截图前会验证 HTML 和 API 实例身份。
 
 ## 实现结构与技术栈
 
@@ -178,7 +196,9 @@ src/
   components/AguiChatTurn.tsx   事件驱动的回复
   components/AguiLearningPanel.tsx  回放、状态差异与 reducer 实验
   components/A2uiWorkshop.tsx   声明编辑与预算提交练习
-  labs/                        独立实验，以及 A2UI / MCP 聊天组件
+  labs/registry.ts             自动发现 manifest、兼容路由与懒加载
+  labs/<id>/                   实验定义、界面、可选聊天适配与局部样式
+  labs/legacy.tsx              现有三协议实验的兼容适配
   mcp-app.ts                   iframe 中的工具应用
   DocsReader.tsx               中文文档阅读器
 server/
@@ -192,8 +212,12 @@ shared/
   mcp-server.ts                工具、资源与只读样本
   static-api.ts                静态版浏览器内逻辑路由
   runtime.ts                   运行模式与 trace 传输标记
+  lab-contract.ts              实验身份、运行接口与预留任务契约
+  labs/                        浏览器安全的实验逻辑与静态适配
   …                            协议模型、校验与状态转换
-docs/                          中文教程与练习
+config/runtime.ts             统一端口、实例身份和环境配置
+scripts/runtime.ts            启动与端口预检
+docs/                          中文教程与练习；labs/ 自动发现
 public/readme/screenshots/     README 实际截图
 scripts/capture-readme.mjs     可重复执行的截图脚本
 tests/ · e2e/                  协议、通信集成与浏览器验证

@@ -13,5 +13,5 @@
     "noEmit": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "server", "shared", "tests", "e2e", "*.config.ts"]
+  "include": ["src", "server", "shared", "tests", "e2e", "config", "scripts", "*.config.ts"]
 }

@@ -2,7 +2,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import projectReadme from '../../README.md?raw';
-import { DOC_CHAPTERS } from '../../shared/doc-navigation';
+import { DOC_CHAPTERS, discoverDocChapters, type DocChapter } from '../../shared/doc-navigation';
 
 interface MarkdownNode {
   type: string;
@@ -17,6 +17,12 @@ export interface DocumentHeading {
   text: string;
   depth: number;
   offset?: number;
+}
+
+export interface LearningDocument extends DocChapter {
+  source: string;
+  headings: DocumentHeading[];
+  plainText: string;
 }
 
 function nodeText(node: MarkdownNode): string {
@@ -54,24 +60,50 @@ function inspectMarkdown(source: string) {
     for (const child of node.children ?? []) visit(child);
   }
   visit(tree);
-  return { headings, plainText: text.join('\n') };
+  const firstHeading = tree.children?.find((node) => node.type === 'heading');
+  const firstParagraph = tree.children?.find((node) => node.type === 'paragraph');
+  return {
+    headings,
+    plainText: text.join('\n'),
+    title: firstHeading ? nodeText(firstHeading).replace(/\s+/gu, ' ').trim() : '',
+    description: firstParagraph ? nodeText(firstParagraph).replace(/\s+/gu, ' ').trim() : '',
+  };
 }
 
-const sources = import.meta.glob<string>('../../docs/*.md', {
+/** Build a reader registry from canonical repository-relative Markdown sources. */
+export function createDocuments(
+  sources: Readonly<Record<string, string>>,
+  chapters: readonly DocChapter[] = DOC_CHAPTERS,
+): LearningDocument[] {
+  const inspected = new Map(
+    Object.entries(sources).map(([file, source]) => [file, { source, ...inspectMarkdown(source) }]),
+  );
+  const registry = discoverDocChapters(
+    Array.from(inspected, ([file, { title, description }]) => ({ file, title, description })),
+    chapters,
+  );
+  return registry.map((chapter) => {
+    const content = inspected.get(chapter.file);
+    if (!content) throw new Error(`找不到学习文档：${chapter.file}`);
+    const { source, headings, plainText } = content;
+    return { ...chapter, source, headings, plainText };
+  });
+}
+
+const sources = import.meta.glob<string>('../../docs/**/*.md', {
   query: '?raw',
   import: 'default',
   eager: true,
 });
 
-export const documents = DOC_CHAPTERS.map((chapter) => {
-  const source = chapter.file === 'README.md' ? projectReadme : sources[`../../${chapter.file}`];
-  if (typeof source !== 'string') throw new Error(`找不到学习文档：${chapter.file}`);
-  return { ...chapter, source, ...inspectMarkdown(source) };
+export const documents = createDocuments({
+  'README.md': projectReadme,
+  ...Object.fromEntries(Object.entries(sources).map(([file, source]) => [file.slice(6), source])),
 });
 
-export function searchDocuments(query: string) {
+export function searchDocuments(query: string, registry: readonly LearningDocument[] = documents) {
   const terms = query.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean);
-  return documents.flatMap((document) => {
+  return registry.flatMap((document) => {
     if (!terms.length) return [{ document, excerpt: document.description }];
     const searchable =
       `${document.title}\n${document.description}\n${document.plainText}`.toLocaleLowerCase();

@@ -9,7 +9,7 @@ test('learning navigation, keyboard tabs, theme and mobile layout', async ({ pag
   await page.screenshot({ path: 'test-results/overview-desktop.png', fullPage: true });
 
   await page.getByRole('button', { name: '开始第一个实验' }).click();
-  await expect(page).toHaveURL(/#agui$/);
+  await expect(page).toHaveURL(/#labs\/agui$/);
   await page.getByRole('tab', { name: '交互实验' }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab', { name: '原理拆解' })).toHaveAttribute(

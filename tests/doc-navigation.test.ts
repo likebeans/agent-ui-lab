@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { documents } from '../src/docs/content';
 import {
   DOC_CHAPTERS,
   docHref,
@@ -171,6 +172,46 @@ describe('Markdown link destinations', () => {
     },
   );
 
+  it.each(['foundation', 'task-state', 'w0', 'a2ui-2'])(
+    'keeps canonical lab workspace links: %s',
+    (id) => {
+      expect(resolveDocLink(`#labs/${id}`, 'map')).toBe(`#labs/${id}`);
+      expect(resolveDocLink(`/#labs/${id}`, 'project')).toBe(`#labs/${id}`);
+    },
+  );
+
+  it.each([
+    '#labs/',
+    '#labs/..',
+    '#labs/../chat',
+    '#labs/foundation/../../chat',
+    '#labs//foundation',
+    '#labs/foundation/',
+    '#labs/foundation?next=chat',
+    '#labs/foundation#chat',
+    '#labs/%66oundation',
+    '#labs/%2e%2e',
+    '#labs/foundation%2F..',
+    '#labs/foundation%5C..',
+    '#labs/foundation%00',
+    '#labs/foundation%ZZ',
+    '#labs%2Ffoundation',
+    '#labs/Uppercase',
+    '#labs/-foundation',
+    '#labs/foundation-',
+    '#labs/foundation--other',
+    '#labs/javascript:alert(1)',
+    '#labs/https://example.com',
+    '/#unregistered-workspace',
+  ])('rejects malformed or arbitrary workspace routes: %s', (href) => {
+    expect(resolveDocLink(href, 'map')).toBeNull();
+  });
+
+  it('continues to treat ordinary fragments as local document headings', () => {
+    expect(resolveDocLink('#labs-notes', 'map')).toBe(docHref('map', 'labs-notes'));
+    expect(resolveDocLink('#unknown-workspace', 'map')).toBe(docHref('map', 'unknown-workspace'));
+  });
+
   it('normalizes existing docs routes without losing unknown chapters', () => {
     expect(resolveDocLink('#docs', 'project')).toBe('#docs/map');
     expect(resolveDocLink('/#docs/a2ui?section=数据绑定', 'map')).toBe(docHref('a2ui', '数据绑定'));
@@ -237,26 +278,26 @@ describe('Markdown link destinations', () => {
 
   it('resolves the checked-in Markdown links and angle autolinks as renderer destinations', () => {
     const localServers = new Set<string>();
-    for (const chapter of DOC_CHAPTERS) {
+    for (const chapter of documents) {
       const markdown = readFileSync(new URL(chapter.file, projectRoot), 'utf8');
       for (const match of markdown.matchAll(/(!?)\[[^\]]*\]\(([^\s)]+)\)/g)) {
         if (match[1] === '!') {
-          const image = resolveDocImage(match[2], chapter.slug);
+          const image = resolveDocImage(match[2], chapter.slug, documents);
           expect(image, `${chapter.file}: ${match[2]}`).not.toBeNull();
           expect(readFileSync(new URL(`public/${image}`, projectRoot)).byteLength).toBeGreaterThan(
             0,
           );
           continue;
         }
-        const resolved = resolveDocLink(match[2], chapter.slug);
+        const resolved = resolveDocLink(match[2], chapter.slug, documents);
         expect(resolved, `${chapter.file}: ${match[2]}`).not.toBeNull();
         const route = parseDocsHash(resolved!);
-        if (route) expect(DOC_CHAPTERS.some((item) => item.slug === route.slug)).toBe(true);
-        else expect(resolved).toMatch(/^https?:\/\//u);
+        if (route) expect(documents.some((item) => item.slug === route.slug)).toBe(true);
+        else expect(resolved).toMatch(/^(?:https?:\/\/|#labs\/)/u);
       }
       // Markdown removes the angle brackets before passing an autolink to the link renderer.
       for (const match of markdown.matchAll(/<(https?:\/\/[^>]+)>/g)) {
-        expect(resolveDocLink(match[1], chapter.slug)).toBe(match[1]);
+        expect(resolveDocLink(match[1], chapter.slug, documents)).toBe(match[1]);
         if (match[1].startsWith('http://127.0.0.1:')) localServers.add(match[1]);
       }
     }

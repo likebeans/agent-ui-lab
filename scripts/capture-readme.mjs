@@ -1,11 +1,20 @@
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect } from '@playwright/test';
+import { loadRuntimeConfig } from '../config/runtime.ts';
+import { assertLocalInstance } from '../config/health.ts';
+import { assertPageInstance } from './runtime-preflight.ts';
 
-const baseURL = process.env.README_BASE_URL ?? 'http://127.0.0.1:5173';
+const config = loadRuntimeConfig();
+const baseURL = config.environment.README_BASE_URL ?? config.webOrigin;
+await assertPageInstance(baseURL, config.instanceId);
+await assertLocalInstance(baseURL, config.instanceId);
 const destination = new URL('../public/readme/screenshots/', import.meta.url);
 await mkdir(destination, { recursive: true });
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({
+  channel: config.environment.PLAYWRIGHT_CHANNEL === 'chromium' ? undefined : 'chrome',
+  headless: true,
+});
 const errors = [];
 const page = await browser.newPage({
   viewport: { width: 1440, height: 1000 },

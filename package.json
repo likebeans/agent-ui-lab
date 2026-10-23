@@ -7,21 +7,22 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:server": "tsx watch server/index.ts",
-    "dev:web": "vite --host 127.0.0.1",
+    "dev": "tsx scripts/runtime.ts dev",
+    "dev:server": "tsx scripts/runtime.ts dev:server",
+    "dev:web": "tsx scripts/runtime.ts dev:web",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
     "build:pages": "npm run typecheck && vite build --mode pages",
-    "preview:pages": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "preview": "tsx scripts/runtime.ts preview",
+    "preview:pages": "tsx scripts/runtime.ts preview:pages",
     "test:pages": "playwright test --config playwright.pages.config.ts",
-    "start": "tsx server/index.ts --production",
+    "start": "tsx scripts/runtime.ts start",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "screenshots:readme": "node scripts/capture-readme.mjs",
+    "screenshots:readme": "tsx scripts/capture-readme.mjs",
     "check": "npm run test && npm run build",
-    "format": "prettier --write src server shared tests e2e docs scripts .github *.json *.ts *.html *.md",
-    "format:check": "prettier --check src server shared tests e2e docs scripts .github *.json *.ts *.html *.md"
+    "format": "prettier --write src server shared tests e2e docs scripts config .github *.json *.ts *.html *.md",
+    "format:check": "prettier --check src server shared tests e2e docs scripts config .github *.json *.ts *.html *.md"
   },
   "dependencies": {
     "@ag-ui/core": "1.0.3",

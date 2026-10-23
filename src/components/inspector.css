@@ -1,0 +1,35 @@
+.trace-identity {
+  border-block: 1px solid var(--border);
+  padding: 10px 16px;
+  color: var(--muted);
+  font-size: 11px;
+  min-width: 0;
+}
+
+.trace-identity summary {
+  cursor: pointer;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+}
+
+.trace-identity dl {
+  display: grid;
+  gap: 8px;
+  margin-block: 8px;
+}
+
+.trace-identity dl > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.trace-identity dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.trace-identity code {
+  font-size: 10px;
+}

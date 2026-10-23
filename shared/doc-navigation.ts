@@ -71,10 +71,79 @@ export const DOC_CHAPTERS = [
   },
 ] as const;
 
-export type DocSlug = (typeof DOC_CHAPTERS)[number]['slug'];
+export type DocSlug = (typeof DOC_CHAPTERS)[number]['slug'] | `labs/${string}`;
+
+export interface DocChapter {
+  slug: DocSlug;
+  file: string;
+  title: string;
+  description: string;
+  group: string;
+}
+
+export interface DocChapterSource {
+  file: string;
+  title?: string;
+  description?: string;
+}
 
 const APP_HASHES = new Set(['#chat', '#overview', '#agui', '#a2ui', '#mcp', '#roadmap']);
 const UNSAFE_PATH_CHARACTERS = /[\u0000-\u001f\u007f\\]/;
+const LAB_DOCUMENT = /^docs\/labs\/([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/u;
+const LAB_HASH = /^#labs\/[a-z0-9]+(?:-[a-z0-9]+)*$/u;
+
+/** Merge canonical repository sources without changing the curated chapters or their order. */
+export function discoverDocChapters(
+  sources: readonly DocChapterSource[],
+  chapters: readonly DocChapter[] = DOC_CHAPTERS,
+): DocChapter[] {
+  const result = [...chapters];
+  const slugs = new Set<string>();
+  const files = new Set<string>();
+  for (const chapter of chapters) {
+    if (slugs.has(chapter.slug) || files.has(chapter.file)) {
+      throw new Error(`重复的学习文档：${chapter.slug} (${chapter.file})`);
+    }
+    slugs.add(chapter.slug);
+    files.add(chapter.file);
+  }
+
+  const sourceFiles = new Set<string>();
+  const discovered: DocChapter[] = [];
+  for (const source of sources) {
+    const { file } = source;
+    if (
+      UNSAFE_PATH_CHARACTERS.test(file) ||
+      /[%?#:]/u.test(file) ||
+      !file.endsWith('.md') ||
+      file.split('/').some((segment) => !segment || segment === '.' || segment === '..')
+    ) {
+      throw new Error(`无效的学习文档路径：${file}`);
+    }
+    if (sourceFiles.has(file)) throw new Error(`重复的学习文档来源：${file}`);
+    sourceFiles.add(file);
+    if (files.has(file)) continue;
+    if (!file.startsWith('docs/labs/')) continue;
+    const match = LAB_DOCUMENT.exec(file);
+    if (!match) throw new Error(`无效的实验文档路径：${file}`);
+
+    const slug: DocSlug = `labs/${match[1]}`;
+    if (slugs.has(slug)) throw new Error(`重复的学习文档：${slug} (${file})`);
+    slugs.add(slug);
+    files.add(file);
+    const title = source.title?.trim() || match[1];
+    discovered.push({
+      slug,
+      file,
+      title,
+      description: source.description?.trim() || '实验说明与操作步骤。',
+      group: '实验文档',
+    });
+  }
+  // Vite glob order and filesystem enumeration must not affect reader pagination.
+  discovered.sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+  return [...result, ...discovered];
+}
 
 function decodeFragment(value: string): string {
   try {
@@ -105,8 +174,12 @@ export function docHref(slug: string, section = ''): string {
   return section ? `${hash}?section=${encodeURIComponent(section)}` : hash;
 }
 
-function resolveDocFile(path: string, currentSlug: DocSlug): string | null {
-  const current = DOC_CHAPTERS.find((chapter) => chapter.slug === currentSlug);
+function resolveDocFile(
+  path: string,
+  currentSlug: DocSlug,
+  chapters: readonly DocChapter[],
+): string | null {
+  const current = chapters.find((chapter) => chapter.slug === currentSlug);
   if (!current || path.includes('?') || path.endsWith('/')) return null;
 
   const segments = path.startsWith('/') ? [] : current.file.split('/').slice(0, -1);
@@ -131,17 +204,25 @@ function resolveDocFile(path: string, currentSlug: DocSlug): string | null {
 }
 
 /** Serve repository screenshots from Vite's public directory, including under a base path. */
-export function resolveDocImage(href: string, currentSlug: DocSlug): string | null {
+export function resolveDocImage(
+  href: string,
+  currentSlug: DocSlug,
+  chapters: readonly DocChapter[] = DOC_CHAPTERS,
+): string | null {
   const value = href.trim();
   if (!value || UNSAFE_PATH_CHARACTERS.test(value)) return null;
-  const file = resolveDocFile(value, currentSlug);
+  const file = resolveDocFile(value, currentSlug, chapters);
   return file && /^public\/readme\/screenshots\/[a-z0-9][a-z0-9-]*\.png$/u.test(file)
     ? file.slice('public/'.length)
     : null;
 }
 
 /** Resolve a Markdown link destination, without rewriting Markdown or source-code references. */
-export function resolveDocLink(href: string, currentSlug: DocSlug): string | null {
+export function resolveDocLink(
+  href: string,
+  currentSlug: DocSlug,
+  chapters: readonly DocChapter[] = DOC_CHAPTERS,
+): string | null {
   const value = href.trim();
   if (!value || UNSAFE_PATH_CHARACTERS.test(value) || value.startsWith('//')) return null;
 
@@ -155,15 +236,17 @@ export function resolveDocLink(href: string, currentSlug: DocSlug): string | nul
   }
 
   const hash = value.startsWith('/#') ? value.slice(1) : value;
-  if (APP_HASHES.has(hash)) return hash;
+  if (APP_HASHES.has(hash) || LAB_HASH.test(hash)) return hash;
+  // Reserve workspace routes: malformed lab paths must not become local heading links.
+  if (/^#labs(?:[/?#%]|$)/u.test(hash)) return null;
   const docsRoute = parseDocsHash(hash);
   if (docsRoute) return docHref(docsRoute.slug, docsRoute.section);
   if (value.startsWith('#')) return docHref(currentSlug, decodeFragment(value.slice(1)));
 
   const fragmentIndex = value.indexOf('#');
   const path = fragmentIndex < 0 ? value : value.slice(0, fragmentIndex);
-  const file = resolveDocFile(path, currentSlug);
-  const chapter = DOC_CHAPTERS.find((item) => item.file === file);
+  const file = resolveDocFile(path, currentSlug, chapters);
+  const chapter = chapters.find((item) => item.file === file);
   if (!chapter) return null;
   const section = fragmentIndex < 0 ? '' : decodeFragment(value.slice(fragmentIndex + 1));
   return docHref(chapter.slug, section);
