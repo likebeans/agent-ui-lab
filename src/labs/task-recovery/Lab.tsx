@@ -382,7 +382,7 @@ export default function TaskRecoveryLab({ runtime, active }: LabComponentProps) 
               </div>
               <div>
                 <dt>恢复 checkpoint seq</dt>
-                <dd>{session.checkpointSeq ?? '—'}</dd>
+                <dd>{session.recovery?.checkpointCursor.afterSeq ?? '—'}</dd>
               </div>
               <div>
                 <dt>投影 toolExecutionCount</dt>
@@ -392,6 +392,32 @@ export default function TaskRecoveryLab({ runtime, active }: LabComponentProps) 
             <p className={styles.small}>
               重复或旧 run 不改变投影；发现 gap 时 cursor 不跳过缺失记录。
             </p>
+            {session.recovery && (
+              <p className={styles.small}>
+                本次恢复到 afterSeq {session.recovery.cursor.afterSeq}，重放{' '}
+                {session.recovery.replayedEventCount} 条增量事件；之后接流可继续推进当前投影。
+              </p>
+            )}
+            <button
+              className={`button secondary ${styles.traceButton}`}
+              type="button"
+              disabled={locked || !session.recovery}
+              onClick={() => {
+                const recovery = session.recovery;
+                if (!recovery) return;
+                runtime.focusTrace({
+                  labId: runtime.identity.labId,
+                  threadId: recovery.threadId,
+                  taskId: recovery.taskId,
+                  runId: recovery.cursor.runId,
+                  seq: recovery.cursor.afterSeq,
+                  eventType: 'task-recovery/restored',
+                });
+              }}
+            >
+              <FileSearch size={16} aria-hidden="true" />
+              定位本次恢复记录
+            </button>
           </section>
         </div>
         {projection && (

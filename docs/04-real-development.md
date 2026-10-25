@@ -64,7 +64,7 @@ MCP Apps 要协商宿主能力。App 发起工具调用需要宿主授权、服�
 
 静态学习版顶部会说明运行模式。协议检查器中 `transport: browser-memory` 和 `client→browser-agent` / `browser-agent→client` 表示进程内教学调用，`POST /api/...` 是对应逻辑路由的标签，不是已发生的 HTTP 请求。MCP 的 `resources/read` 从构建时生成的 `mcp-app/cards.html` 或 `mcp-app/list.html` 读取资源；App / Host 握手与工具代理仍通过官方 SDK 执行。取消会产生真实协议终态；中断本地流只会截断传输。它可以演示协议机制，但不能验证网络代理、服务端隔离或鉴权。
 
-GitHub Pages 使用 `.github/workflows/deploy-pages.yml`，由 Pages 的 `base_path` 配置静态资源前缀，构建后先在无 API 的环境运行浏览器验证，再发布 `dist/`。仓库根目录须包含本项目的 `package.json` 和工作流；在 Settings → Pages 选择 GitHub Actions，推送 `main` 或手动运行工作流即可。具体命令见 [项目部署说明](../README.md#部署与-github-pages)。
+GitHub Pages 使用 `.github/workflows/deploy-pages.yml`。自动发布与手动发布都必须先通过同一提交的完整 CI：格式、单元与集成测试、类型、普通构建、本地 HTTP 和 Pages 子路径浏览器套件；失败或取消时不部署。通过后，再由 Pages 的 `base_path` 配置静态资源前缀，构建并验证实际发布路径下的 `dist/`，随后发布。仓库根目录须包含本项目的 `package.json` 和 `.github/workflows/` 中的工作流；在 Settings → Pages 选择 GitHub Actions，推送 `main` 或手动运行发布工作流即可。具体命令见 [项目部署说明](../README.md#部署与-github-pages)。
 
 本地 `npm start` 仅在本机 3100 端口运行构建产物。真正部署带后端的应用时，先运行 `npm run check`，再具体补齐：
 

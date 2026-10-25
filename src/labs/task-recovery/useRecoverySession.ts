@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { EventSchemas } from '@ag-ui/core/schemas';
 import { z } from 'zod';
-import type { LabRuntime } from '../../../shared/lab-contract';
+import type { EventCursor, LabRuntime } from '../../../shared/lab-contract';
 import { errorMessage } from '../../../shared/http';
 import { consumeSse } from '../../../shared/sse';
 import { deliverRecoveryEvent, recoverProjection } from '../../../shared/labs/task-recovery/client';
@@ -32,6 +32,11 @@ export type Connection =
   | 'paused'
   | 'error';
 type Identity = { threadId: string; taskId: string };
+type RecoveryEvidence = Identity & {
+  checkpointCursor: EventCursor;
+  cursor: EventCursor;
+  replayedEventCount: number;
+};
 type Scope = { generation: number; controller: AbortController };
 type Stream = { scope: Scope; controller: AbortController };
 type TaskResponse = { task: RecoveryTask; persistence: Persistence };
@@ -97,7 +102,7 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
   const [cancellation, setCancellation] = useState<
     'none' | 'requesting' | 'confirmed' | 'unconfirmed'
   >('none');
-  const [checkpointSeq, setCheckpointSeq] = useState<number | null>(null);
+  const [recovery, setRecovery] = useState<RecoveryEvidence | null>(null);
   const [readTime, setReadTime] = useState('');
   const [lastEvent, setLastEvent] = useState<RecoveryEvent | null>(null);
   const [hasOldEvent, setHasOldEvent] = useState(false);
@@ -188,7 +193,7 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
       setProjection(null);
       cancelRequested.current = false;
       setCancellation('none');
-      setCheckpointSeq(null);
+      setRecovery(null);
       setReadTime('');
       setTasks([]);
     }
@@ -204,6 +209,7 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
     setReadTime(new Date().toLocaleTimeString('zh-CN', { hour12: false }));
     if (storage) setPersistence(storage);
     if (changedRun) {
+      setRecovery(null);
       cancelRequested.current = false;
       setLastEvent(null);
       setCancellation(next.status === 'cancelled' ? 'confirmed' : 'none');
@@ -328,6 +334,7 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
   }
 
   async function readRecovery(scope: Scope): Promise<RecoveryReadResult> {
+    setRecovery(null);
     const id = current.current.identity;
     const result = await json<RecoveryReadResult>(`${taskPath(id.taskId)}/recovery`, scope);
     if (result.task.taskId !== id.taskId || result.task.threadId !== id.threadId) {
@@ -337,7 +344,12 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
     if (!valid(scope)) return result;
     putTask(result.task, result.persistence);
     putProjection(next);
-    setCheckpointSeq(result.checkpoint.cursor.afterSeq);
+    const evidence: RecoveryEvidence = {
+      ...id,
+      checkpointCursor: { ...result.checkpoint.cursor },
+      cursor: { runId: next.runId, afterSeq: next.afterSeq },
+      replayedEventCount: result.events.length,
+    };
     for (const value of result.events) {
       const event = parseEvent(value);
       keepEvent(event);
@@ -345,17 +357,19 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
     }
     runtimeRef.current.trace({
       ...id,
-      runId: next.runId || undefined,
-      seq: next.afterSeq,
+      runId: evidence.cursor.runId,
+      seq: evidence.cursor.afterSeq,
       direction: 'local',
       eventType: 'task-recovery/restored',
       label: 'checkpoint + events 已恢复投影',
       payload: {
-        checkpointCursor: result.checkpoint.cursor,
-        cursor: { runId: next.runId, afterSeq: next.afterSeq },
+        checkpointCursor: evidence.checkpointCursor,
+        cursor: evidence.cursor,
+        replayedEventCount: evidence.replayedEventCount,
       },
       note: '恢复只读取已有记录；未调用任务命令或工具。',
     });
+    setRecovery(evidence);
     return result;
   }
 
@@ -556,6 +570,7 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
         current.current.projection = null;
         setTask(null);
         setProjection(null);
+        setRecovery(null);
         setConnection('idle');
         const detail =
           runtimeRef.current.mode === 'pages'
@@ -796,7 +811,7 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
     notice,
     error,
     cancellation,
-    checkpointSeq,
+    recovery,
     readTime,
     lastEvent,
     hasOldEvent,

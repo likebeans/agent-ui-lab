@@ -97,6 +97,98 @@ test('disconnect, checkpoint recovery, duplicate delivery and refresh preserve c
   expect(errors).toEqual([]);
 });
 
+test('checkpoint-only recovery locates its own evidence and clears it when the task changes', async ({
+  page,
+}) => {
+  await page.goto('./#labs/task-recovery');
+  const { lab, authority, projection } = panels(page);
+  await createAndStart(page);
+  await expect(authority).toContainText('succeeded');
+  const taskInput = lab.getByLabel('Task ID（任务，可选）');
+  const taskId = await taskInput.inputValue();
+  const runId = await fact(lab, '当前 run').innerText();
+  const cursor = Number(await fact(projection, 'cursor / afterSeq').innerText());
+
+  // Recreate the component without clearing the Pages fixture. A terminal task
+  // is restored entirely from its checkpoint, with no lastEvent in this instance.
+  await page.getByRole('link', { name: '学习总览', exact: true }).click();
+  await page.locator('a[href="#labs/task-recovery"]').click();
+  await expect(authority).toContainText('succeeded');
+  await expect(lab.getByRole('button', { name: '定位最近事件记录', exact: true })).toBeDisabled();
+  const locate = lab.getByRole('button', { name: '定位本次恢复记录', exact: true });
+  await expect(locate).toBeEnabled();
+  await locate.click();
+  const inspector = page.getByRole('complementary', { name: '协议检查器', exact: true });
+  const payload = inspector.locator('.payload');
+  await inspector
+    .getByRole('button', { name: /GET 200/u })
+    .last()
+    .click();
+  await expect(payload).toContainText('"checkpoint"');
+  const response = JSON.parse(await payload.innerText());
+  expect(response.events).toEqual([]);
+  expect(response.checkpoint.cursor).toEqual({ runId, afterSeq: cursor });
+  await locate.click();
+  await expect
+    .poll(async () => JSON.parse(await payload.innerText()))
+    .toEqual({
+      checkpointCursor: { runId, afterSeq: cursor },
+      cursor: { runId, afterSeq: cursor },
+      replayedEventCount: 0,
+    });
+  await inspector.locator('.trace-identity summary').click();
+  await expect(fact(inspector, 'taskId')).toHaveText(taskId);
+  await expect(fact(inspector, 'runId')).toHaveText(runId);
+  await expect(fact(inspector, 'eventType')).toHaveText('task-recovery/restored');
+  if (!pages) {
+    await page.route('**/api/labs/task-recovery/tasks/*/recovery', (route) =>
+      route.fulfill({ status: 503, json: { error: '恢复接口暂不可用' } }),
+    );
+    await lab.getByRole('button', { name: '查询任务', exact: true }).click();
+    await expect(lab.getByRole('alert')).toContainText('恢复接口暂不可用');
+    await expect(locate).toBeDisabled();
+    await expect(
+      inspector.getByRole('button', { name: /checkpoint \+ events 已恢复投影/u }),
+    ).toHaveCount(1);
+    await page.unroute('**/api/labs/task-recovery/tasks/*/recovery');
+  }
+
+  await lab.getByRole('button', { name: '查询任务', exact: true }).click();
+  await expect(lab).toHaveAttribute('aria-busy', 'false');
+  await inspector.getByRole('textbox', { name: '筛选协议消息' }).fill('no matching event');
+  await locate.click();
+  await expect(inspector.getByRole('textbox', { name: '筛选协议消息' })).toHaveValue('');
+  const restored = inspector.getByRole('button', { name: /checkpoint \+ events 已恢复投影/u });
+  await expect(restored).toHaveCount(2);
+  await expect(restored.last()).toHaveAttribute('aria-pressed', 'true');
+
+  await taskInput.fill(`missing-${crypto.randomUUID()}`);
+  await lab.getByRole('button', { name: '查询任务', exact: true }).click();
+  await expect(lab.getByRole('alert')).toContainText('未找到任务');
+  await expect(locate).toBeDisabled();
+  await taskInput.fill('');
+  await lab.getByRole('button', { name: '新建任务', exact: true }).click();
+  await expect(locate).toBeEnabled();
+  const nextTask = await taskInput.inputValue();
+  expect(nextTask).not.toBe(taskId);
+  await locate.click();
+  await expect
+    .poll(async () => JSON.parse(await payload.innerText()))
+    .toEqual({
+      checkpointCursor: { runId: '', afterSeq: 0 },
+      cursor: { runId: '', afterSeq: 0 },
+      replayedEventCount: 0,
+    });
+  await expect(fact(inspector, 'taskId')).toHaveText(nextTask);
+  await expect(fact(inspector, 'runId')).toHaveText('');
+  if (pages) {
+    await lab.getByRole('button', { name: '重置内存样本', exact: true }).click();
+    await lab.getByRole('button', { name: '确认重置内存样本', exact: true }).click();
+    await expect(lab.getByRole('status')).toContainText('内存样本已重置');
+    await expect(locate).toBeDisabled();
+  }
+});
+
 test('cancel is confirmed by the server and retry isolates late old-run delivery', async ({
   page,
 }) => {
@@ -134,8 +226,24 @@ test('cancel is confirmed by the server and retry isolates late old-run delivery
   await expect(authority).toContainText('cancelled');
   await expect(projection).toContainText('cancelled');
   const previousCount = Number(await fact(authority, '本地 toolExecutionCount').innerText());
+  const previousRun = await fact(lab, '当前 run').innerText();
   await lab.getByRole('button', { name: '重新执行（新 run）', exact: true }).click();
   await expect(lab.getByRole('button', { name: '断开接流', exact: true })).toBeEnabled();
+  const currentRun = await fact(lab, '当前 run').innerText();
+  expect(currentRun).not.toBe(previousRun);
+  const locate = lab.getByRole('button', { name: '定位本次恢复记录', exact: true });
+  await locate.click();
+  const inspector = page.getByRole('complementary', { name: '协议检查器', exact: true });
+  const payload = inspector.locator('.payload');
+  await expect
+    .poll(async () => JSON.parse(await payload.innerText()).cursor?.runId)
+    .toBe(currentRun);
+  const recovered = JSON.parse(await payload.innerText());
+  await expect
+    .poll(async () => Number(await fact(projection, 'cursor / afterSeq').innerText()))
+    .toBeGreaterThan(recovered.cursor.afterSeq);
+  await locate.click();
+  await expect.poll(async () => JSON.parse(await payload.innerText())).toEqual(recovered);
   await lab.getByText('投递故障实验', { exact: true }).click();
   await lab.getByRole('button', { name: '注入旧 run 事件', exact: true }).click();
   await expect(lab.getByRole('status')).toContainText(/旧 run.*忽略|stale-run/u);

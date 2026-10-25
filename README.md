@@ -175,7 +175,7 @@ npm start             # 用本地 Node 服务预览构建产物
 
 浏览器测试和截图脚本使用本机 Google Chrome 的独立浏览器上下文。没有 Chrome 时，可先运行 `npx playwright install chrome`。
 
-`.github/workflows/ci.yml` 在 PR 和 `main` 推送时检查格式、单测、类型与普通构建，再顺序运行本地 HTTP 和 Pages 子路径浏览器套件。W1 的断流恢复、取消、新 run 隔离及 Pages 重置已纳入日常发现；进程中断与 SQLite 重启测试由 `npm test` 执行。
+`.github/workflows/ci.yml` 提供可复用的完整 CI：检查格式、单测、类型与普通构建，再顺序运行本地 HTTP 和 Pages 子路径浏览器套件。PR 和手动校验会运行这些检查；`main` 推送由 Pages 工作流调用同一套 CI，自动发布和手动发布都必须通过校验后才能构建发布产物，失败或取消时不会部署。W1 的断流恢复、取消、新 run 隔离、checkpoint 恢复记录定位及 Pages 重置已纳入日常发现；进程中断与 SQLite 重启测试由 `npm test` 执行。
 
 ### 更新 README 截图
 
@@ -259,10 +259,10 @@ Pages 模式中的 `POST /api/...` trace 标签表示对应的教学逻辑路由
 
 ### 发布到 GitHub Pages
 
-1. 将**本目录的内容作为仓库根目录**推送到 GitHub，包含 `package.json` 和 `.github/workflows/deploy-pages.yml`。当前工作流默认监听 `main`；使用其他默认分支时修改 `branches`。
+1. 将**本目录的内容作为仓库根目录**推送到 GitHub，包含 `package.json` 和 `.github/workflows/` 中的工作流。当前工作流默认监听 `main`；使用其他默认分支时同步修改工作流中的分支条件。
 2. 在仓库 **Settings → Pages → Build and deployment → Source** 中选择 **GitHub Actions**。
 3. 推送到 `main`，或在 **Actions → Deploy GitHub Pages → Run workflow** 手动运行。
-4. 工作流检查格式和协议测试，构建静态版，并在无 API 的静态预览服务上运行浏览器验证。通过后上传 `dist/`，发布到 `github-pages` 环境。访问地址显示在该次部署中。
+4. 工作流先验证本次发布提交的格式、单元与集成测试、类型、普通构建，以及本地 HTTP 和 Pages 子路径浏览器套件。完整 CI 通过后，才允许构建、验证并上传使用实际 Pages 路径的静态产物，发布到 `github-pages` 环境。访问地址显示在该次部署中。手动发布也遵守相同门禁，校验与发布必须使用同一个提交。仅允许发布 `main`，部署前再次确认提交仍是 `main` 的最新版本；重跑旧提交不会覆盖更新的站点。
 
 工作流从 Pages 配置读取 `base_path`，自动设置 Vite `base`，适用于 `https://<用户名>.github.io/<仓库名>/`，也支持根站点或已配置的自定义域名。无需把仓库名写入源码。聊天、独立实验和文档使用 hash 路由，刷新深链接不需要服务器回退规则。
 

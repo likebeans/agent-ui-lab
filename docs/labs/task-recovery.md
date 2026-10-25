@@ -90,7 +90,9 @@ SSE 是读取事件的连接，不是任务的生命周期。页面的 `AbortCon
 
 SQLite adapter 将本地工具结果记录、事件、reducer 状态、checkpoint 与版本放在同一事务里推进。检查点周期为 `CHECKPOINT_INTERVAL`，终态也会保存 checkpoint；客户端无需假设每次恢复都有增量事件。SSE 每帧的 `data` 是完整 envelope，`id` 为 `<runId>:<seq>`；页面用 `consumeSse` 处理帧与网络 chunk 边界，用显式 query cursor 接续。流捕获指定 run，不随 task 的新 run 悄悄切换。
 
-点击“定位最近事件记录”可用 task、run、seq 和事件类型定位到检查器。`runtime.trace` 的协议记录保持 `payload: event.payload`，外层保存 `threadId`、`taskId`、`runId` 和 `seq`；HTTP 查询、命令及恢复说明另有应用 trace。检查器中的原始载荷因此可以直接与官方事件对照。
+在“客户端投影”中点击“定位本次恢复记录”，可找到最近一次成功恢复的应用记录 `task-recovery/restored`。载荷包含 `checkpointCursor`、恢复后的 `cursor` 与 `replayedEventCount`，关联身份在外层保留 thread、task 和 run。即使终态 checkpoint 已包含全部结果、增量 events 为空，也能直接定位；接流继续推进后，这个入口仍指向恢复时的游标。再次恢复会更新定位目标，切换任务、进入新 run、开始新的恢复或重置样本时会清除旧依据，恢复失败不会生成成功记录。检查器只保留最近 300 条，清空或淘汰后可重新查询任务生成恢复记录。
+
+点击“定位最近事件记录”仍按 task、run、seq 和事件类型定位原始 AG-UI 事件。`runtime.trace` 的协议记录保持 `payload: event.payload`，外层保存 `threadId`、`taskId`、`runId` 和 `seq`；HTTP 查询、命令及恢复说明另有应用 trace。检查器中的原始载荷因此可以直接与官方事件对照，恢复应用记录不冒充 AG-UI 原生事件。
 
 ## 命令、幂等与计数的精确范围
 
