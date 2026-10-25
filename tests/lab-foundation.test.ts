@@ -1,5 +1,9 @@
 import { createServer as createHttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { loadRuntimeConfig } from '../config/runtime';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createLabRegistry, getLab, labFromHash, labHref, labs } from '../src/labs/registry';
 import foundation from '../src/labs/foundation/manifest';
@@ -17,8 +21,28 @@ afterEach(async () => {
 
 describe('lab registration', () => {
   it('discovers all manifests including a lab without protocols and retains legacy links', () => {
-    expect(labs.map((lab) => lab.id)).toEqual(['agui', 'a2ui', 'mcp', 'foundation']);
+    expect(labs.map((lab) => lab.id)).toEqual(
+      expect.arrayContaining([
+        'agui',
+        'a2ui',
+        'mcp',
+        'foundation',
+        'task-recovery',
+        'human-approval',
+        'a2ui-compatibility',
+      ]),
+    );
+    expect(new Set(labs.map((lab) => lab.id)).size).toBe(labs.length);
+    expect(labs.map((lab) => lab.order)).toEqual(
+      labs.map((lab) => lab.order).sort((a, b) => a - b),
+    );
     expect(getLab('foundation')?.protocols).toEqual([]);
+    expect(getLab('a2ui-compatibility')).toMatchObject({
+      protocols: ['a2ui'],
+      modes: ['local', 'pages'],
+      docs: 'labs/a2ui-compatibility',
+    });
+    expect(labFromHash('#labs/a2ui-compatibility')?.id).toBe('a2ui-compatibility');
     for (const id of ['agui', 'a2ui', 'mcp']) {
       expect(labFromHash(`#${id}`)?.id).toBe(id);
       expect(labFromHash(labHref(id))?.id).toBe(id);
@@ -155,9 +179,15 @@ describe('trace identity', () => {
 });
 
 it('uses one validated engine contract for HTTP and static lab handlers', async () => {
-  const server = createHttpServer(createServer());
+  const dataDir = mkdtempSync(path.join(tmpdir(), 'foundation-http-'));
+  const app = createServer({ ...loadRuntimeConfig(), dataDir });
+  const server = createHttpServer(app);
+  close.push(async () => {
+    app.locals.closeLabs();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(dataDir, { recursive: true, force: true });
+  });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  close.push(() => new Promise((resolve) => server.close(() => resolve())));
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const post = (value: unknown) => ({
     method: 'POST',

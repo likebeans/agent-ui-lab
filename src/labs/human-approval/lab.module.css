@@ -1,0 +1,269 @@
+.root {
+  display: grid;
+  gap: 24px;
+  padding: 24px;
+  min-width: 0;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.root h2 {
+  font-size: 21px;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+
+.root h3 {
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.root :is(button, input, select) {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.root :is(input, select) {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 12px;
+}
+
+.root input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.intro,
+.panel,
+.field,
+.facts,
+.notice,
+.recovery,
+.error {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.intro p,
+.note,
+.field small {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.boundary {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--surface-soft);
+  font-size: 14px;
+}
+
+.boundary svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: var(--amber);
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.panel,
+.facts {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  background: var(--surface);
+}
+
+.field {
+  gap: 6px;
+  font-size: 14px;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.fieldError {
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 16px;
+  margin: 0;
+  font-size: 14px;
+}
+
+.summary dt {
+  color: var(--muted);
+}
+
+.summary dd {
+  margin: 0;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.summary code {
+  white-space: normal;
+}
+
+.notice,
+.recovery,
+.error {
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.notice {
+  background: var(--green-soft);
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.recovery {
+  background: var(--amber-soft);
+  color: var(--amber);
+  border-color: var(--amber);
+}
+
+.error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.error a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.error ul {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.status svg {
+  flex-shrink: 0;
+}
+
+.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.root .checkbox input {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin-top: 4px;
+  accent-color: var(--primary);
+}
+
+.experiments {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  font-size: 14px;
+}
+
+.experiments summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding-block: 8px;
+  font-weight: 600;
+}
+
+.experiments summary:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+
+.experiments > div {
+  display: grid;
+  gap: 14px;
+  padding-top: 8px;
+}
+
+.command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--code-bg);
+  padding: 12px;
+  font-size: 12px;
+}
+
+.record {
+  display: grid;
+  gap: 8px;
+  padding-block: 12px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 1200px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .root {
+    padding: 16px;
+    gap: 20px;
+  }
+
+  .panel,
+  .facts {
+    padding: 16px;
+  }
+
+  .root :is(input, select) {
+    font-size: 16px;
+  }
+
+  .summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .summary dd + dt {
+    margin-top: 8px;
+  }
+}

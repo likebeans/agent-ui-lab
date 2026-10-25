@@ -1,28 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-
-function observeStaticRequests(page: Page) {
-  const errors: string[] = [];
-  const apiRequests: string[] = [];
-  const assetFailures: string[] = [];
-  const rootAssets: string[] = [];
-  const base = process.env.PAGES_TEST_PATH ?? '/pages-test/';
-  page.on('pageerror', (error) => errors.push(error.message));
-  page.on('request', (request) => {
-    const url = new URL(request.url());
-    if (url.protocol !== 'http:') return;
-    if (/\/(?:api(?:\/|$)|mcp$)/u.test(url.pathname)) apiRequests.push(url.pathname);
-    if (!url.pathname.startsWith(base)) rootAssets.push(url.pathname);
-  });
-  page.on('response', (response) => {
-    if (response.status() >= 400) assetFailures.push(`${response.status()} ${response.url()}`);
-  });
-  return () => {
-    expect(errors).toEqual([]);
-    expect(apiRequests).toEqual([]);
-    expect(assetFailures).toEqual([]);
-    expect(rootAssets).toEqual([]);
-  };
-}
+import { observeStaticRequests } from './static-requests';
 
 async function send(page: Page, prompt: string) {
   await page.getByRole('textbox', { name: '发送消息给 Agent' }).fill(prompt);
@@ -39,8 +16,9 @@ test('Pages runs the three chat protocols, learning experiments and documents en
   );
   await expect(page.locator('.connection-state')).toHaveText('浏览器内运行');
   await send(page, '帮我规划杭州三日游');
-  const stream = page.getByRole('article', { name: 'AG-UI Agent 回复', exact: true });
-  await expect(stream.getByRole('status')).toContainText('已完成');
+  const replies = page.getByRole('article', { name: 'AG-UI Agent 回复', exact: true });
+  const stream = replies.first();
+  await expect(stream.locator('.chat-run-status')).toContainText('已完成');
   await expect(stream.locator('.chat-itinerary > div')).toHaveCount(3);
   await stream.getByRole('button', { name: '追溯文字更新', exact: true }).click();
   const playback = stream.getByLabel('AG-UI 事件回放学习');
@@ -109,8 +87,9 @@ test('Pages runs the three chat protocols, learning experiments and documents en
   await frame.getByRole('button', { name: '杭州', exact: true }).click();
   await expect(frame.getByText('西湖清晨步道', { exact: true })).toBeVisible();
   await send(page, '按照现在的需求，再规划一次');
-  const nextPlan = page.getByRole('article', { name: 'AG-UI Agent 回复', exact: true }).last();
-  await expect(nextPlan.getByRole('status')).toContainText('已完成');
+  await expect(replies).toHaveCount(2);
+  const nextPlan = replies.nth(1);
+  await expect(nextPlan.locator('.chat-run-status')).toContainText('已完成');
   await expect(nextPlan.locator('.chat-itinerary > div')).toHaveCount(4);
 
   await page.getByRole('link', { name: '打开学习文档', exact: true }).click();

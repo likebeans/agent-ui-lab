@@ -215,6 +215,7 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
   const sequence = useRef(0);
   const sending = useRef(false);
   const routingController = useRef<AbortController | null>(null);
+  const routingUpdates = useRef<LabContext | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
@@ -312,7 +313,11 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     (id: string, exchange: { user: string; assistant: string; context?: LabContext }) => {
       if (!activeTurns.current.has(id)) return;
       const patch = exchange.context;
-      if (patch) setContext((previous) => mergeLabContext(previous, patch));
+      if (patch) {
+        if (routingUpdates.current !== null)
+          routingUpdates.current = mergeLabContext(routingUpdates.current, patch);
+        setContext((previous) => mergeLabContext(previous, patch));
+      }
       setMessages((previous) =>
         previous.some((message) => message.turnId === id)
           ? [
@@ -339,6 +344,7 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     const id = crypto.randomUUID();
     const controller = new AbortController();
     routingController.current = controller;
+    routingUpdates.current = {};
     const timeout = setTimeout(() => controller.abort(), 8000);
     setRouting(true);
     setError('');
@@ -348,6 +354,9 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     try {
       const route = await resolveChatLab(text, mode, context, controller.signal);
       if (epoch !== generation.current) return;
+      // Successful interactions during routing take precedence over its request snapshot.
+      const nextContext = mergeLabContext(route.context, routingUpdates.current ?? {});
+      routingUpdates.current = null;
       const history = messages.flatMap((message) => {
         const turn = turns.find((item) => item.request.id === message.turnId);
         const content = message.text ?? turn?.summary;
@@ -358,10 +367,10 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
         threadId: threadId.current,
         prompt: text,
         labId: route.labId,
-        context: route.context,
+        context: nextContext,
         history: history.slice(-48),
       };
-      setContext(route.context);
+      setContext(nextContext);
       activeTurns.current.add(id);
       setTurns((previous) => [
         ...previous,
@@ -383,13 +392,17 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
       sending.current = false;
     } finally {
       clearTimeout(timeout);
-      if (epoch === generation.current) setRouting(false);
+      if (epoch === generation.current) {
+        routingUpdates.current = null;
+        setRouting(false);
+      }
     }
   }
 
   function reset() {
     generation.current += 1;
     routingController.current?.abort();
+    routingUpdates.current = null;
     sending.current = false;
     threadId.current = `thread-${crypto.randomUUID()}`;
     activeTurns.current.clear();

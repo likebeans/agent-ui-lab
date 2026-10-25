@@ -7,6 +7,7 @@ export default defineConfig({
   globalSetup: './config/playwright-health.ts',
   testDir: './e2e',
   testIgnore: '**/pages.spec.ts',
+  outputDir: 'test-results/local',
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,

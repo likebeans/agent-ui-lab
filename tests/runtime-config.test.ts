@@ -13,9 +13,11 @@ import viteConfig from '../vite.config.ts';
 
 const temporaryDirectories: string[] = [];
 const servers: Server[] = [];
+const closeLabs: Array<() => void> = [];
 
 afterEach(async () => {
   vi.unstubAllEnvs();
+  for (const close of closeLabs.splice(0)) close();
   await Promise.all(
     servers
       .splice(0)
@@ -198,7 +200,9 @@ describe('instance health and port preflight', () => {
       },
     });
     // Use an ephemeral socket for this integration test, leaving every existing app untouched.
-    const port = await listen(createHttpServer(createServer(config)));
+    const app = createServer(config);
+    closeLabs.push(() => app.locals.closeLabs());
+    const port = await listen(createHttpServer(app));
     const origin = `http://127.0.0.1:${port}`;
     const response = await fetch(`${origin}/api/health`);
     expect(response.status).toBe(200);

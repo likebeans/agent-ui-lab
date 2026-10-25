@@ -1,0 +1,46 @@
+name: Validate changes
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Check formatting, contracts and production build
+        run: |
+          npm run format:check
+          npm run check
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Verify local HTTP application
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+          LAB_INSTANCE_ID: ci-local
+          LAB_DATA_DIR: ${{ runner.temp }}/agent-ui-lab-local
+        run: npm run test:e2e
+      - name: Verify Pages under a subpath without an API server
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+          LAB_INSTANCE_ID: ci-pages
+          PAGES_TEST_PATH: /pages-test/
+        run: npm run test:pages

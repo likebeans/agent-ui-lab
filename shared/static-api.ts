@@ -25,11 +25,11 @@ export async function staticFetch(path: string, options: RequestInit = {}): Prom
   options.signal?.throwIfAborted();
   const method = (options.method ?? 'GET').toUpperCase();
   try {
-    const body = typeof options.body === 'string' ? JSON.parse(options.body) : undefined;
     if (path === '/api/health' && method === 'GET')
       return json({ status: 'ok', mode: 'browser-static', instanceId: LAB_INSTANCE_ID });
     const labResponse = await staticLabFetch(path, options);
     if (labResponse) return labResponse;
+    const body = typeof options.body === 'string' ? JSON.parse(options.body) : undefined;
     if (path === '/api/chat' && method === 'POST') return json(routeChat(body));
     if (path === '/api/a2ui/surface' && (method === 'GET' || method === 'POST'))
       return json({ messages: createInitialA2uiMessages(body), agent: 'deterministic-fixture' });

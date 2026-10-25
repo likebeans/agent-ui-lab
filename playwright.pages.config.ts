@@ -6,11 +6,13 @@ const base = config.environment.PAGES_TEST_PATH ?? '/pages-test/';
 const origin = config.previewOrigin;
 // The specs use this path when checking subpath assets and network isolation.
 process.env.PAGES_TEST_PATH = base;
+process.env.PLAYWRIGHT_LAB_MODE = 'pages';
 
 export default defineConfig({
   globalSetup: './config/playwright-pages-health.ts',
   testDir: './e2e',
   testMatch: '**/pages.spec.ts',
+  outputDir: 'test-results/pages',
   fullyParallel: false,
   workers: 1,
   timeout: 60_000,

@@ -15,7 +15,12 @@ export default {
   modes: ['local', 'pages'],
   docs: 'a2ui',
   legacyHash: '#a2ui',
-  sourceReferences: ['shared/a2ui.ts', 'shared/a2ui-agent.ts', 'src/labs/A2uiLab.tsx'],
+  sourceReferences: [
+    'shared/a2ui.ts',
+    'shared/a2ui-agent.ts',
+    'src/components/A2uiSurfaceRenderer.tsx',
+    'src/labs/A2uiLab.tsx',
+  ],
   presentation: {
     name: 'A2UI',
     subtitle: '让一份声明，生长为真实界面',

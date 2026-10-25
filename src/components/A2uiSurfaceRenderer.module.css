@@ -1,0 +1,29 @@
+.component[aria-current='true'] {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.field [aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.errors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.errors p {
+  margin: 0;
+}

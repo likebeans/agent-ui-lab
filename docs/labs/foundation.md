@@ -49,7 +49,7 @@ load: () => import('./Lab');
 
 manifest 可提供 `chat`：提示词、起始文案、后续建议、源码线索与懒加载聊天组件。现有实验使用 `protocol` 接入旧规则路由；新实验可提供 `resolve` 和可选 `match`，返回实验 ID、上下文和解释。手动选择会调用对应 resolver，自动匹配后再回退到旅行规则路由。
 
-聊天请求使用 `LabChatRequest`，上下文是按命名空间保存的 `LabContext`。旅行适配器只读写 `context.trip`；新场景使用自己的命名空间，并在 adapter 边界校验结构。交互回调只提交本次改变的字段；`mergeLabContext` 将命名空间对象的一层字段合并到最新上下文，数组、标量与 null 则整体替换，避免旧轮次覆盖后来修改的数据。对话历史、上下文和 task 是不同对象；本基础层没有实现长期记忆或持久会话。
+聊天请求使用 `LabChatRequest`，上下文是按命名空间保存的 `LabContext`。旅行适配器只读写 `context.trip`；新场景使用自己的命名空间，并在 adapter 边界校验结构。交互回调只提交本次改变的字段；`mergeLabContext` 将命名空间对象的一层字段合并到最新上下文，数组、标量与 null 则整体替换，避免旧轮次覆盖后来修改的数据。路由等待期间成功交互提交的字段优先于路由请求时的快照；路由返回后，新回复和共享上下文使用同一份合并结果。对话历史、上下文和 task 是不同对象；本基础层没有实现长期记忆或持久聊天会话。
 
 ## 原始记录与应用身份
 
@@ -65,11 +65,13 @@ thread 表示会话，turn 表示一次用户交互，task 表示用户目标，
 
 接入示例的请求为 `POST /api/labs/foundation/run`，输入 `{ text: string }`，返回规范化文字、Unicode 字符数与确定性引擎标记。空值或非法结构被拒绝。本地证明 HTTP 请求，Pages 证明浏览器内计算；两者不会暗示服务端授权或持久写入。
 
-## W1 / W2 的预留契约
+## W1 / W2 的任务契约与存储
 
 `shared/lab-contract.ts` 固定应用层 `TaskSnapshot`、`TaskCommand`、`TaskStatus`、`EventCursor`、`TaskEvent`、`TaskCheckpoint`、`CommandResult` 与最小 `TaskStore` 接口。
 
-任务包含版本、状态、当前 run 和业务状态。命令包含 commandId、taskId、expectedVersion；结果区分 accepted、conflict、rejected。checkpoint 关联恢复状态与最后事件序号。这些是接口预留，当前没有持久实现。W1 负责存储与重放，W2 负责审批内容、有效期、会话绑定及幂等业务写入。
+任务包含版本、状态、当前 run 和业务状态。命令包含 commandId、taskId、expectedVersion；结果区分 accepted、conflict、rejected。checkpoint 关联恢复状态与最后事件序号。[W1](./task-recovery.md) 已实现 SQLite 任务存储、checkpoint 与事件重放；[W2](./human-approval.md) 已实现审批内容、有效期、教学会话绑定及幂等业务写入。
+
+两者共享 `server/storage/sqlite.ts` 基础设施，各自保留业务表、存储适配器与版本语义。`server/labs/index.ts` 创建或接收宿主注入的 `LabDatabase`，初始化迁移，统一清理模块；`app.locals.closeLabs()` 先停止模块、结束恢复事件流，再关闭自有连接。调用者注入的数据库由调用者最终关闭。测试创建 `createServer()` 时应使用临时数据目录，并在关闭 HTTP server 前调用清理函数。Pages 只提供可重置的内存模拟。
 
 ## Worktree 配置隔离
 
@@ -83,7 +85,7 @@ LAB_INSTANCE_ID=recovery
 LAB_DATA_DIR=.lab-data/recovery
 ```
 
-`LAB_WEB_PORT`、`LAB_API_PORT`、`LAB_PREVIEW_PORT` 同时驱动启动、代理、Origin 校验与测试地址。`PORT` 保留为 API 端口兼容别名。`LAB_INSTANCE_ID` 可显式设置，默认根据 checkout 路径生成，避免不同 worktree 的实例混淆。数据目录按 worktree 隔离，已加入忽略规则；W0 只配置路径，不创建数据库。
+`LAB_WEB_PORT`、`LAB_API_PORT`、`LAB_PREVIEW_PORT` 同时驱动启动、代理、Origin 校验与测试地址。`PORT` 保留为 API 端口兼容别名。`LAB_INSTANCE_ID` 可显式设置，默认根据 checkout 路径生成，避免不同 worktree 的实例混淆。数据目录按 worktree 隔离，已加入忽略规则；本地服务在此创建 W1/W2 共用的 `lab.sqlite`，Pages 不创建数据库。
 
 在配置好的目录执行 `npm run dev`。`npm run dev:web`、`npm run dev:server`、`npm start`、`npm run preview:pages` 使用相同配置。端口冲突时会失败，不会自动连到别的服务。`/api/health` 返回实例身份；前端和浏览器测试检查当前响应是否属于预期实例。
 

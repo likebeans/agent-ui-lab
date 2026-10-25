@@ -73,8 +73,10 @@ test('one conversation moves from streamed events to generated components to a t
   await frame.getByRole('button', { name: '杭州', exact: true }).click();
   await expect(page.locator('.interaction-message')).toHaveCount(8);
   await send(page, '按照现在的需求，再规划一次');
-  const nextPlan = page.getByRole('article', { name: 'AG-UI Agent 回复' }).last();
-  await expect(nextPlan.getByRole('status')).toContainText('已完成');
+  const replies = page.getByRole('article', { name: 'AG-UI Agent 回复' });
+  await expect(replies).toHaveCount(2);
+  const nextPlan = replies.nth(1);
+  await expect(nextPlan.locator('.chat-run-status')).toContainText('已完成');
   await expect(nextPlan.locator('.chat-itinerary > div')).toHaveCount(4);
   const followupInput = requests
     .filter((request) => request.url.endsWith('/api/agui'))
@@ -165,6 +167,109 @@ test('chat recovers from a failed surface and a truncated stream, and discards a
   );
   await expect(freshForm.getByLabel('行程天数', { exact: true })).toHaveValue('3');
   await expect(page.getByRole('article', { name: 'AG-UI Agent 回复' })).toHaveCount(0);
+});
+
+for (const { days, prompt } of [
+  { days: '4', prompt: '再生成一个表单' },
+  { days: '3', prompt: '生成上海七日游表单' },
+]) {
+  test(`a delayed route preserves a successful form submission of ${days} days`, async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await send(page, '生成杭州三日游表单');
+    const forms = page.getByRole('article', { name: 'A2UI Agent 回复', exact: true });
+    const form = forms.first();
+    await expect(form.getByLabel('行程天数', { exact: true })).toHaveValue('3');
+    await form.getByLabel('出行人姓名', { exact: true }).fill('并发学习者');
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started!: () => void;
+    const intercepted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    await page.route(
+      '**/api/chat',
+      async (route) => {
+        const response = await route.fetch();
+        started();
+        await held;
+        await route.fulfill({ response });
+      },
+      { times: 1 },
+    );
+    try {
+      await send(page, prompt);
+      await intercepted;
+      await form.getByLabel('行程天数', { exact: true }).fill(days);
+      await form.getByRole('button', { name: '生成计划', exact: true }).click();
+      await expect(form.locator('[data-a2ui-component-id="status"]')).toContainText(
+        `杭州 ${days} 天游览计划`,
+      );
+    } finally {
+      release();
+    }
+
+    await expect(forms).toHaveCount(2);
+    const nextForm = forms.nth(1);
+    await expect(nextForm.getByLabel('行程天数', { exact: true })).toHaveValue(days);
+    await expect(nextForm.getByRole('combobox', { name: '目的地', exact: true })).toHaveValue(
+      'hangzhou',
+    );
+    await expect(page.locator('.chat-topbar')).toContainText(`${days} 天`);
+    const nextRequest = page.waitForRequest(
+      (request) => new URL(request.url()).pathname === '/api/agui',
+    );
+    await send(page, '按照现在的需求，再规划一次');
+    expect((await nextRequest).postDataJSON().forwardedProps).toMatchObject({
+      city: '杭州',
+      days: Number(days),
+    });
+  });
+}
+
+test('a delayed route keeps new prompt fields alongside a later App city selection', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await send(page, '打开杭州的活动应用');
+  const app = page.getByRole('article', { name: 'MCP Apps Agent 回复', exact: true });
+  await expect(app.locator('.chat-run-status')).toContainText('App 与宿主已连接');
+
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let started!: () => void;
+  const intercepted = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  await page.route(
+    '**/api/chat',
+    async (route) => {
+      const response = await route.fetch();
+      started();
+      await held;
+      await route.fulfill({ response });
+    },
+    { times: 1 },
+  );
+  try {
+    await send(page, '生成上海七日游表单');
+    await intercepted;
+    await app.frameLocator('iframe').getByRole('button', { name: '杭州', exact: true }).click();
+    await expect(page.locator('.interaction-message')).toHaveCount(2);
+  } finally {
+    release();
+  }
+
+  const form = page.getByRole('article', { name: 'A2UI Agent 回复', exact: true });
+  await expect(form.getByRole('combobox', { name: '目的地', exact: true })).toHaveValue('hangzhou');
+  await expect(form.getByLabel('行程天数', { exact: true })).toHaveValue('7');
+  await expect(page.locator('.chat-topbar')).toContainText('7 天');
 });
 
 test('mobile chat supports Enter submission, cancellation, inspection and a fresh thread', async ({

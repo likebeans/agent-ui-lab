@@ -36,7 +36,7 @@
 
 想多走一步，可以载入“预算字段 + action.context”，点击“验证并应用到真实界面”，填写姓名和预算后提交。面板会核对预算是否进入真实 action 和服务端回显。随后再发“生成带预算和同行人数的出行表单”，比较服务端下发的组件结构。
 
-打开 `shared/a2ui-agent.ts` → `shared/a2ui.ts` → `src/labs/A2uiLab.tsx`，看生成函数怎样产生声明、运行时怎样验证消息、`SurfaceRenderer` 怎样把白名单组件映射为 React。生成的是组件与数据描述，浏览器不执行模型输出的任意代码。
+打开 `shared/a2ui-agent.ts` → `shared/a2ui.ts` → `src/components/A2uiSurfaceRenderer.tsx`，看生成函数怎样产生声明、运行时怎样验证消息、`SurfaceRenderer` 怎样把白名单组件映射为 React；`src/labs/A2uiLab.tsx` 管理请求、trace 和表单绑定。生成的是组件与数据描述，浏览器不执行模型输出的任意代码。
 
 ## 20–30 分钟：工具怎样提供应用
 

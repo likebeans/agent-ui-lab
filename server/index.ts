@@ -8,10 +8,11 @@ import { installChatRoutes } from './chat';
 import { installLabRoutes } from './labs/index';
 import { allowedOrigins, loadRuntimeConfig, type RuntimeConfig } from '../config/runtime.ts';
 import type { LabHealth } from '../shared/instance.ts';
+import type { LabDatabase } from './storage/sqlite';
 
 export function createServer(
   config: RuntimeConfig = loadRuntimeConfig(),
-  options: { production?: boolean } = {},
+  options: { production?: boolean; database?: LabDatabase } = {},
 ) {
   const app = express();
   app.disable('x-powered-by');
@@ -41,7 +42,7 @@ export function createServer(
   installAguiRoutes(app);
   installA2uiRoutes(app);
   installMcpRoutes(app);
-  installLabRoutes(app);
+  app.locals.closeLabs = installLabRoutes(app, config, { database: options.database });
 
   if (options.production) {
     const dist = fileURLToPath(new URL('../dist', import.meta.url));
@@ -73,23 +74,22 @@ export function createServer(
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const config = loadRuntimeConfig();
-  const server = createServer(config, { production: process.argv.includes('--production') }).listen(
-    config.apiPort,
-    '127.0.0.1',
-    () => {
-      console.log(`Agent UI Lab API: ${config.apiOrigin} (${config.instanceId})`);
-      console.log(
-        process.argv.includes('--production')
-          ? 'Serving production build.'
-          : 'Start the frontend with npm run dev:web, or run both with npm run dev.',
-      );
-    },
-  );
+  const app = createServer(config, { production: process.argv.includes('--production') });
+  const server = app.listen(config.apiPort, '127.0.0.1', () => {
+    console.log(`Agent UI Lab API: ${config.apiOrigin} (${config.instanceId})`);
+    console.log(
+      process.argv.includes('--production')
+        ? 'Serving production build.'
+        : 'Start the frontend with npm run dev:web, or run both with npm run dev.',
+    );
+  });
   server.on('error', (error) => {
+    app.locals.closeLabs();
     console.error(`API could not listen on ${config.apiOrigin}: ${error.message}`);
     process.exitCode = 1;
   });
   const shutdown = () => {
+    app.locals.closeLabs();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
   };
