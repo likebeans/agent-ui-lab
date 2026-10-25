@@ -29,6 +29,7 @@ import { SurfaceRenderer } from '../../components/A2uiSurfaceRenderer';
 import styles from './lab.module.css';
 
 interface SavedAction {
+  documentId: string;
   envelope: ActionEnvelope;
   surface: A2uiSurface;
 }
@@ -161,6 +162,7 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
   }
 
   function acceptSnapshot(snapshot: CompatibilitySnapshot, preserve: boolean) {
+    setSaved((previous) => (previous?.documentId === snapshot.documentId ? previous : null));
     // Preserve supported drafts even while the simulated client hides their controls.
     const result = checkCompatibility(snapshot, DEFAULT_CAPABILITIES);
     setIssues([]);
@@ -279,6 +281,11 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
   async function submit(savedAction?: SavedAction) {
     const current = draftRef.current;
     if (!current) return;
+    if (savedAction && savedAction.documentId !== current.snapshot.documentId) {
+      setSaved(null);
+      setError('保存的动作属于其他文档，请在当前文档重新保存。');
+      return;
+    }
     const input = savedAction?.envelope ?? actionEnvelope();
     if (!input) return;
     const submitted = current;
@@ -619,7 +626,12 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
                 onClick={() => {
                   const envelope = actionEnvelope();
                   if (!envelope) return;
-                  setSaved({ envelope, surface: structuredClone(draftRef.current!.surface) });
+                  const current = draftRef.current!;
+                  setSaved({
+                    documentId: current.snapshot.documentId,
+                    envelope,
+                    surface: structuredClone(current.surface),
+                  });
                   setNotice(`已保存针对版本 ${envelope.expectedRevision} 的动作，尚未发送。`);
                 }}
               >
@@ -636,7 +648,8 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
             </div>
             {saved && (
               <p className={styles.hint}>
-                保存的业务修订：{saved.envelope.expectedRevision} · Surface：
+                保存的文档：{saved.documentId} · 业务修订：{saved.envelope.expectedRevision} ·
+                Surface：
                 {saved.envelope.action.action.surfaceId}
               </p>
             )}

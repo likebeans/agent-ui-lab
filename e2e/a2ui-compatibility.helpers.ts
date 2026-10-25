@@ -12,6 +12,44 @@ export async function createCompatibilityForm(page: Page) {
   return lab;
 }
 
+export async function exerciseCompatibilityDocumentSwitch(page: Page) {
+  const lab = await createCompatibilityForm(page);
+  const documentInput = lab.getByLabel('文档 ID', { exact: true });
+  const firstDocument = await documentInput.inputValue();
+  await lab.getByRole('button', { name: '重置并使用新 ID', exact: true }).click();
+  await createCompatibilityForm(page);
+  const secondDocument = await documentInput.inputValue();
+  await lab.getByLabel('出行人姓名', { exact: true }).fill('仅属于当前文档的动作');
+  await lab.getByLabel('行程天数', { exact: true }).fill('3');
+  await lab.getByRole('button', { name: '保存当前动作', exact: true }).click();
+  const sendSaved = lab.getByRole('button', { name: '发送已保存动作', exact: true });
+
+  await documentInput.fill(`missing-${crypto.randomUUID()}`);
+  await lab.getByRole('button', { name: '读取远端', exact: true }).click();
+  await expect(lab.getByRole('alert')).toHaveText('文档不存在。');
+  await expect(sendSaved).toBeEnabled();
+  await documentInput.fill(secondDocument);
+  await lab.getByRole('button', { name: '读取远端', exact: true }).click();
+  await expect(lab.getByRole('alert')).toHaveCount(0);
+  await expect(sendSaved).toBeEnabled();
+
+  await documentInput.fill(firstDocument);
+  await lab.getByRole('button', { name: '读取远端', exact: true }).click();
+  await expect(lab.getByLabel('行程天数', { exact: true })).toHaveValue('2');
+  await expect(sendSaved).toBeDisabled();
+  await expect(lab.getByTestId('accepted-actions')).toHaveText('0');
+  await documentInput.fill(secondDocument);
+  await lab.getByRole('button', { name: '读取远端', exact: true }).click();
+  await expect(sendSaved).toBeDisabled();
+  await lab.getByLabel('出行人姓名', { exact: true }).fill('同一文档的过期动作');
+  await lab.getByRole('button', { name: '保存当前动作', exact: true }).click();
+  await lab.getByRole('button', { name: '远端延长一天', exact: true }).click();
+  await expect(sendSaved).toBeEnabled();
+  await sendSaved.click();
+  await expect(lab.getByRole('alert')).toHaveText('文档版本已变化，请合并最新快照后重试。');
+  await expect(lab.getByTestId('accepted-actions')).toHaveText('0');
+}
+
 export async function exerciseCompatibilityFallbacks(page: Page) {
   const lab = await createCompatibilityForm(page);
   const name = lab.getByLabel('出行人姓名', { exact: true });

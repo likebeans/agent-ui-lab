@@ -3,6 +3,7 @@ import {
   compatibilityLab,
   createCompatibilityForm,
   exerciseCompatibilityConflicts,
+  exerciseCompatibilityDocumentSwitch,
   exerciseCompatibilityFallbacks,
   exerciseCompatibilityValidation,
 } from './a2ui-compatibility.helpers';
@@ -52,6 +53,12 @@ test('draft conflicts require a choice and obsolete revision or Surface actions 
   });
   await exerciseCompatibilityConflicts(page);
   expect(codes).toEqual(['revision-mismatch', 'surface-mismatch']);
+});
+
+test('switching documents clears saved actions while same-document stale actions remain testable', async ({
+  page,
+}) => {
+  await exerciseCompatibilityDocumentSwitch(page);
 });
 
 for (const laterDays of ['5', '2']) {

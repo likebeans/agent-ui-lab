@@ -8,26 +8,45 @@ const DocsReader = lazy(() => import('./DocsReader'));
 export function Root() {
   const [route, setRoute] = useState(() => {
     const hash = window.location.hash;
-    return { hash, workspace: isDocsHash(hash) ? '#chat' : hash || '#chat' };
+    const workspace = isDocsHash(hash) ? '#chat' : hash || '#chat';
+    return {
+      hash,
+      workspace,
+      chatVisited: workspace === '#chat',
+      labHash: workspace === '#chat' ? null : workspace,
+    };
   });
   const reading = isDocsHash(route.hash);
-  const returnFocus = useRef<HTMLElement | null>(null);
-  const workspaceScroll = useRef(0);
+  const chatting = route.workspace === '#chat';
+  const returnFocus = useRef<Record<'chat' | 'labs', HTMLElement | null>>({
+    chat: null,
+    labs: null,
+  });
+  const workspaceScroll = useRef({ chat: 0, labs: 0 });
+  const previousWorkspace = useRef(route.workspace);
   const wasReading = useRef(reading);
 
   useEffect(() => {
     const changed = () => {
       const hash = window.location.hash;
-      if (isDocsHash(hash) && !wasReading.current) {
-        returnFocus.current =
+      const nextReading = isDocsHash(hash);
+      const nextWorkspace = nextReading ? previousWorkspace.current : hash || '#chat';
+      const leavingWorkspace =
+        (previousWorkspace.current === '#chat') !== (nextWorkspace === '#chat');
+      if (!wasReading.current && (nextReading || leavingWorkspace)) {
+        const key = previousWorkspace.current === '#chat' ? 'chat' : 'labs';
+        returnFocus.current[key] =
           document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        workspaceScroll.current = window.scrollY;
+        workspaceScroll.current[key] = window.scrollY;
       }
       setRoute((previous) => ({
         hash,
-        workspace: isDocsHash(hash) ? previous.workspace : hash || '#chat',
+        workspace: nextWorkspace,
+        chatVisited: previous.chatVisited || nextWorkspace === '#chat',
+        labHash: nextWorkspace === '#chat' ? previous.labHash : nextWorkspace,
       }));
-      wasReading.current = isDocsHash(hash);
+      previousWorkspace.current = nextWorkspace;
+      wasReading.current = nextReading;
     };
     window.addEventListener('hashchange', changed);
     return () => window.removeEventListener('hashchange', changed);
@@ -35,24 +54,26 @@ export function Root() {
 
   useEffect(() => {
     if (reading) return;
+    const key = chatting ? 'chat' : 'labs';
     const frame = requestAnimationFrame(() => {
-      window.scrollTo({ top: workspaceScroll.current, behavior: 'instant' });
-      const target = returnFocus.current;
+      window.scrollTo({ top: workspaceScroll.current[key], behavior: 'instant' });
+      const target = returnFocus.current[key];
       if (target?.isConnected && target.getClientRects().length)
         target.focus({ preventScroll: true });
-      returnFocus.current = null;
+      returnFocus.current[key] = null;
     });
     return () => cancelAnimationFrame(frame);
-  }, [reading]);
+  }, [reading, chatting]);
 
   return (
     <>
-      <div hidden={reading} inert={reading}>
-        {route.workspace === '#chat' ? (
-          <ChatWorkspace active={!reading} />
-        ) : (
+      <div hidden={reading || !chatting} inert={reading || !chatting}>
+        {route.chatVisited && <ChatWorkspace active={!reading && chatting} />}
+      </div>
+      <div hidden={reading || chatting} inert={reading || chatting}>
+        {route.labHash !== null && (
           <Suspense fallback={<p style={{ padding: 32 }}>正在打开实验…</p>}>
-            <Labs hash={route.workspace} active={!reading} />
+            <Labs hash={route.labHash} active={!reading && !chatting} />
           </Suspense>
         )}
       </div>

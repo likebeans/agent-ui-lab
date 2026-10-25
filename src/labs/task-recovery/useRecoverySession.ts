@@ -229,6 +229,53 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
     setLastEvent(event);
   }
 
+  async function request<T>(
+    path: string,
+    scope: Scope,
+    options: RequestInit,
+    read: (response: Response) => Promise<T>,
+  ): Promise<T> {
+    // A deadline belongs to one ordinary request, including its body. Aborting the
+    // operation scope would suppress fail/finish and also end its persistent SSE.
+    const signal = AbortSignal.any([
+      scope.controller.signal,
+      runtimeRef.current.signal,
+      AbortSignal.timeout(8_000),
+    ]);
+    let onAbort = () => {};
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(signal.reason);
+      signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    });
+    try {
+      return await Promise.race([
+        aborted,
+        (async () => {
+          signal.throwIfAborted();
+          const response = await runtimeRef.current.request(path, { ...options, signal });
+          signal.throwIfAborted();
+          const value = await read(response);
+          // Some adapters ignore abort while reading. Their eventual response must
+          // not escape the deadline or update a different task/generation.
+          signal.throwIfAborted();
+          if (!valid(scope)) throw new DOMException('已切换任务或暂停展示', 'AbortError');
+          return value;
+        })(),
+      ]);
+    } catch (cause) {
+      if (signal.aborted && signal.reason?.name === 'TimeoutError') {
+        throw new DOMException(
+          '请求超时（8 秒），结果未知。请点击“查询任务”核实服务端事实；不会自动重试命令。',
+          'TimeoutError',
+        );
+      }
+      throw cause;
+    } finally {
+      signal.removeEventListener('abort', onAbort);
+    }
+  }
+
   async function json<T>(
     path: string,
     scope: Scope,
@@ -246,14 +293,15 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
       label: `${method} ${path}`,
       payload: options.body ? JSON.parse(String(options.body)) : { path },
     });
-    const response = await rt.request(path, { ...options, signal: scope.controller.signal });
-    if (!response.headers.get('content-type')?.includes('application/json')) {
-      throw new ApiError(
-        `任务接口未返回 JSON（${response.status}）。请确认 W1 adapter 已登记。`,
-        response.status,
-      );
-    }
-    const value = await response.json();
+    const { response, value } = await request(path, scope, options, async (response) => {
+      if (!response.headers.get('content-type')?.includes('application/json')) {
+        throw new ApiError(
+          `任务接口未返回 JSON（${response.status}）。请确认 W1 adapter 已登记。`,
+          response.status,
+        );
+      }
+      return { response, value: await response.json() };
+    });
     if (!valid(scope)) throw new DOMException('已切换任务或暂停展示', 'AbortError');
     rt.trace({
       ...id,
@@ -697,10 +745,12 @@ export function useRecoverySession(runtime: LabRuntime, active: boolean) {
     const scope = begin('reset');
     if (!scope) return;
     try {
-      const response = await runtimeRef.current.request(`${RECOVERY_API}/fixture`, {
-        method: 'DELETE',
-        signal: scope.controller.signal,
-      });
+      const response = await request(
+        `${RECOVERY_API}/fixture`,
+        scope,
+        { method: 'DELETE' },
+        async (response) => response,
+      );
       if (!valid(scope)) return;
       if (!response.ok)
         throw new Error(

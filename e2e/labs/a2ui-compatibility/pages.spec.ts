@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
   compatibilityLab,
   exerciseCompatibilityConflicts,
+  exerciseCompatibilityDocumentSwitch,
   exerciseCompatibilityFallbacks,
   exerciseCompatibilityValidation,
 } from '../../a2ui-compatibility.helpers';
@@ -44,6 +45,15 @@ test('Pages W3 capabilities, field validation, conflicts and stale actions use o
   await exerciseCompatibilityConflicts(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375);
   await page.screenshot({ path: 'test-results/w3-pages-mobile.png', fullPage: true });
+  verify();
+});
+
+test('Pages W3 switching documents clears saved actions without disabling stale-action experiments', async ({
+  page,
+}) => {
+  const verify = observeStaticRequests(page);
+  await page.goto('./#labs/a2ui-compatibility');
+  await exerciseCompatibilityDocumentSwitch(page);
   verify();
 });
 
