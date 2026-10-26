@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isDocsHash } from '../shared/doc-navigation';
 import { ChatWorkspace } from './ChatWorkspace';
+import { RecoverableModule } from './components/RecoverableModule';
 
-const Labs = lazy(() => import('./App').then((module) => ({ default: module.App })));
-const DocsReader = lazy(() => import('./DocsReader'));
+const loadLabs = () => import('./App').then((module) => ({ default: module.App }));
+const loadDocs = () => import('./DocsReader');
 
 export function Root() {
   const [route, setRoute] = useState(() => {
@@ -72,21 +73,24 @@ export function Root() {
       </div>
       <div hidden={reading || chatting} inert={reading || chatting}>
         {route.labHash !== null && (
-          <Suspense fallback={<p style={{ padding: 32 }}>正在打开实验…</p>}>
-            <Labs hash={route.labHash} active={!reading && !chatting} />
-          </Suspense>
+          <RecoverableModule
+            load={loadLabs}
+            componentProps={{ hash: route.labHash, active: !reading && !chatting }}
+            name="独立实验"
+            returnTo="#chat"
+            returnLabel="返回 Agent 对话"
+            active={!reading && !chatting}
+          />
         )}
       </div>
       {reading && (
-        <Suspense
-          fallback={
-            <p role="status" style={{ padding: 32 }}>
-              正在打开学习文档…
-            </p>
-          }
-        >
-          <DocsReader hash={route.hash} returnTo={route.workspace} />
-        </Suspense>
+        <RecoverableModule
+          load={loadDocs}
+          componentProps={{ hash: route.hash, returnTo: route.workspace }}
+          name="学习文档"
+          returnTo={route.workspace}
+          returnLabel={route.workspace === '#chat' ? '返回 Agent 对话' : '返回独立实验'}
+        />
       )}
     </>
   );

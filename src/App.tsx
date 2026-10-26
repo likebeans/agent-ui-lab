@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowRight,
@@ -30,6 +30,7 @@ import { labs, getLab, labFromHash, labHref, supportsLabMode } from './labs/regi
 import { useLabRuntime } from './labs/useLabRuntime';
 import { STATIC_MODE, describeTrace } from '../shared/runtime';
 import { RuntimeNotice } from './components/RuntimeNotice';
+import { RecoverableModule } from './components/RecoverableModule';
 
 type Page = string;
 type Tab = 'experiment' | 'mechanism' | 'source';
@@ -577,12 +578,16 @@ function RegisteredExperiment({
   const lab = getLab(labId)!;
   const identity = useMemo(() => ({ labId }), [labId]);
   const runtime = useLabRuntime(identity, onTrace, focusTrace);
-  const Component = lab.Component;
   if (!supportsLabMode(lab, runtime.mode)) return <p role="status">此实验暂不支持当前运行模式。</p>;
   return (
-    <Suspense fallback={<div className="empty-state">正在加载实验…</div>}>
-      <Component runtime={runtime} active={active} onResetTrace={onResetTrace} />
-    </Suspense>
+    <RecoverableModule
+      load={lab.load}
+      componentProps={{ runtime, active, onResetTrace }}
+      name={`${lab.presentation.name} 实验`}
+      returnTo="#overview"
+      returnLabel="返回学习总览"
+      active={active}
+    />
   );
 }
 

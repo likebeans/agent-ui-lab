@@ -72,7 +72,7 @@ test('reader renders Markdown chapters, searches full text and follows links and
   await reader(page)
     .getByRole('link', { name: /MCP Apps：从工具到应用.*阅读本章/ })
     .click();
-  await expect(page).toHaveURL(/#docs\/mcp-apps$/);
+  await expect(page).toHaveURL(/#docs\/mcp-apps\?section=/);
   await expect(search).toHaveValue('');
   await expect(reader(page).getByRole('article')).toContainText('PostMessageTransport');
   await search.fill('no-such-chapter-9a62');
@@ -90,7 +90,8 @@ test('reader renders Markdown chapters, searches full text and follows links and
     .getByRole('link', { name: /MCP Apps：从工具到应用.*阅读本章/ })
     .click();
   await expect(search).toHaveValue('');
-  await expect(reader(page).getByRole('heading', { level: 1 })).toBeFocused();
+  await expect(reader(page).locator('.doc-search-target')).toBeFocused();
+  await expect(reader(page).locator('.doc-search-target')).toContainText('PostMessageTransport');
   await stableCode!.dispose();
 
   await chapters.getByRole('link', { name: /项目说明/ }).click();

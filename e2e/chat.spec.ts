@@ -272,6 +272,73 @@ test('a delayed route keeps new prompt fields alongside a later App city selecti
   await expect(page.locator('.chat-topbar')).toContainText('7 天');
 });
 
+for (const failure of ['service', 'timeout'] as const) {
+  for (const draft of ['等待期间的新草稿', ''] as const) {
+    test(`a ${failure} route failure preserves the next draft (${draft || 'empty'}) and retries the failed message`, async ({
+      page,
+    }) => {
+      if (failure === 'timeout') {
+        await page.addInitScript(() => {
+          const schedule = window.setTimeout;
+          window.setTimeout = ((handler: TimerHandler, delay?: number, ...args: unknown[]) =>
+            schedule(handler, delay === 8000 ? 700 : delay, ...args)) as typeof window.setTimeout;
+        });
+      }
+      await page.goto('./#chat');
+      let intercepted!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        intercepted = resolve;
+      });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let attempts = 0;
+      await page.route('**/api/chat', async (route) => {
+        attempts += 1;
+        if (attempts > 1) return route.continue();
+        intercepted();
+        await held;
+        await route.fulfill({ status: 503, json: { error: '路由服务暂不可用' } });
+      });
+      const original = '帮我规划杭州三日游';
+      const composer = page.getByRole('textbox', { name: '发送消息给 Agent' });
+      await send(page, original);
+      await waiting;
+      // Also exercise editing and then deliberately clearing the next draft.
+      await composer.fill('等待期间编辑');
+      await composer.fill(draft);
+      if (failure === 'service') release();
+      const failed = page.getByRole('article', { name: '你的消息', exact: true });
+      try {
+        await expect(failed.getByRole('alert')).toContainText(
+          failure === 'service' ? '路由服务暂不可用' : '请求超时',
+        );
+        await expect(composer).toHaveValue(draft);
+        await expect(failed).toContainText(original);
+        expect(attempts).toBe(1);
+        const submitted = page.waitForRequest(
+          (request) => new URL(request.url()).pathname === '/api/agui',
+        );
+        await failed.getByRole('button', { name: '重试这条消息', exact: true }).click();
+        const run = (await submitted).postDataJSON();
+        expect(
+          run.messages.filter((message: { content: string }) => message.content === original),
+        ).toHaveLength(1);
+        await expect(
+          page.getByRole('article', { name: 'AG-UI Agent 回复' }).getByRole('status'),
+        ).toContainText('已完成');
+        await expect(composer).toHaveValue(draft);
+        await expect(failed).toHaveCount(1);
+        await expect(failed.getByRole('alert')).toHaveCount(0);
+        expect(attempts).toBe(2);
+      } finally {
+        release();
+      }
+    });
+  }
+}
+
 test('mobile chat supports Enter submission, cancellation, inspection and a fresh thread', async ({
   page,
 }) => {

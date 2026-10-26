@@ -16,7 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { docHref, parseDocsHash, resolveDocImage, resolveDocLink } from '../shared/doc-navigation';
-import { documents, searchDocuments } from './docs/content';
+import { documents, searchDocuments, type DocumentSearchMatch } from './docs/content';
 import { useTheme } from './useTheme';
 import { RuntimeNotice } from './components/RuntimeNotice';
 import './docs.css';
@@ -26,11 +26,82 @@ interface DocsReaderProps {
   returnTo: string;
 }
 
+/** Locate literal text across inline Markdown nodes without changing the rendered article. */
+function searchRanges(root: HTMLElement, query: string): Range[] {
+  const nodes: { node: Text; start: number; end: number }[] = [];
+  const walker = window.document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let text = '';
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    if (node.parentElement?.closest('.doc-heading-link')) continue;
+    const start = text.length;
+    text += node.data;
+    nodes.push({ node, start, end: text.length });
+  }
+  // Lowercasing can expand a character (for example İ), so retain original DOM offsets.
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let offset = 0;
+  for (const character of text) {
+    const end = offset + character.length;
+    for (let index = 0; index < character.toLocaleLowerCase().length; index++) {
+      starts.push(offset);
+      ends.push(end);
+    }
+    offset = end;
+  }
+  const folded = text.toLocaleLowerCase();
+  const ranges: Range[] = [];
+  const terms = new Set(query.trim().toLocaleLowerCase().split(/\s+/u).filter(Boolean));
+  for (const term of terms) {
+    let found = folded.indexOf(term);
+    while (found >= 0) {
+      const start = starts[found];
+      const end = ends[found + term.length - 1];
+      const first = nodes.find((entry) => entry.end > start);
+      const last = nodes.find((entry) => entry.end >= end);
+      if (first && last) {
+        const range = window.document.createRange();
+        range.setStart(first.node, start - first.start);
+        range.setEnd(last.node, end - last.start);
+        ranges.push(range);
+      }
+      found = folded.indexOf(term, found + term.length);
+    }
+  }
+  return ranges.sort((left, right) => left.compareBoundaryPoints(Range.START_TO_START, right));
+}
+
+function revealSearchHit(target: HTMLElement, range?: Range) {
+  target.scrollIntoView({ block: 'start', behavior: 'instant' });
+  if (!range) return;
+  const origin = range.startContainer.parentElement;
+  const horizontal = origin?.closest<HTMLElement>('pre, .doc-table-scroll');
+  if (horizontal) {
+    const hit = range.getBoundingClientRect();
+    const frame = horizontal.getBoundingClientRect();
+    if (hit.left < frame.left || hit.right > frame.right)
+      horizontal.scrollLeft += hit.left - frame.left - 20;
+    if (hit.top < frame.top || hit.bottom > frame.bottom)
+      horizontal.scrollTop += hit.top - frame.top - 20;
+  }
+  const hit = range.getBoundingClientRect();
+  const topbar = target.closest('.docs-reader')?.querySelector('.docs-topbar');
+  const top = (topbar?.getBoundingClientRect().bottom ?? 76) + 24;
+  if (hit.top < top || hit.bottom > window.innerHeight - 24)
+    window.scrollBy({ top: hit.top - top, behavior: 'instant' });
+}
+
 export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
   const route = parseDocsHash(hash);
   const document = documents.find((item) => item.slug === route?.slug);
   const section = route?.section ?? '';
   const [query, setQuery] = useState('');
+  const searchDestination = useRef<{
+    match: DocumentSearchMatch;
+    query: string;
+  } | null>(null);
+  const [searchNavigation, setSearchNavigation] = useState(0);
   const [theme, setTheme] = useTheme();
   const article = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -60,20 +131,61 @@ export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
   }, []);
   useEffect(() => {
     window.document.title = `${document?.title ?? '未找到章节'} · Agent UI`;
-    const target =
+    const destination = searchDestination.current;
+    const match = destination?.match;
+    const fromSearch =
+      match?.document.slug === route?.slug && (match?.section?.id ?? '') === section;
+    if (fromSearch) searchDestination.current = null;
+    const sectionHeading =
       section && article.current
         ? Array.from(article.current.querySelectorAll<HTMLElement>('[data-section]')).find(
             (element) => element.dataset.section === section,
           )
         : undefined;
-    const node = target ?? heading.current;
-    node?.focus({ preventScroll: true });
-    if (target) target.scrollIntoView({ block: 'start' });
-    else window.scrollTo({ top: 0, behavior: 'instant' });
+    const targetOffset = fromSearch ? match?.targetOffset : undefined;
+    const blocks = article.current
+      ? Array.from(article.current.querySelectorAll<HTMLElement>('[data-doc-offset]'))
+      : [];
+    const searchTarget =
+      targetOffset === undefined
+        ? undefined
+        : (blocks.find((element) => Number(element.dataset.docOffset) === targetOffset) ??
+          // Tight Markdown lists omit their paragraph element; focus the containing item.
+          blocks
+            .reverse()
+            .find(
+              (element) =>
+                Number(element.dataset.docOffset) <= targetOffset &&
+                Number(element.dataset.docEnd) > targetOffset,
+            ));
+    const node = searchTarget ?? sectionHeading ?? heading.current ?? article.current;
     setQuery('');
     if (contents.current) contents.current.open = false;
     if (window.innerWidth <= 780 && chapters.current) chapters.current.open = false;
-  }, [route?.slug, section]);
+    node?.focus({ preventScroll: true });
+    if (searchTarget || sectionHeading || fromSearch)
+      node?.scrollIntoView({ block: 'start', behavior: 'instant' });
+    else window.scrollTo({ top: 0, behavior: 'instant' });
+    if (!fromSearch || !node || !destination) return;
+
+    node.classList.add('doc-search-target');
+    const ranges = searchRanges(node, destination.query);
+    revealSearchHit(node, ranges[0]);
+    const highlights = window.CSS?.highlights;
+    const highlight =
+      typeof Highlight !== 'undefined' && ranges.length ? new Highlight(...ranges) : undefined;
+    if (highlight) highlights?.set('doc-search-hit', highlight);
+    const timer = window.setTimeout(clearHighlight, 4_000);
+    function clearHighlight() {
+      node?.classList.remove('doc-search-target');
+      if (highlight && highlights?.get('doc-search-hit') === highlight)
+        highlights.delete('doc-search-hit');
+    }
+    return () => {
+      window.clearTimeout(timer);
+      clearHighlight();
+    };
+  }, [route?.slug, section, searchNavigation]);
 
   const markdownComponents = useMemo<Components>(() => {
     function headingNode(level: number, offset: number | undefined, children: ReactNode) {
@@ -83,6 +195,7 @@ export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
         <Tag
           id={item?.id}
           data-section={item?.id}
+          data-doc-offset={offset}
           tabIndex={-1}
           ref={level === 1 ? heading : undefined}
         >
@@ -120,6 +233,30 @@ export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
         ) : (
           <span>{children}</span>
         ),
+      p: ({ children, node }) => (
+        <p data-doc-offset={node?.position?.start.offset} tabIndex={-1}>
+          {children}
+        </p>
+      ),
+      li: ({ children, node }) => (
+        <li
+          data-doc-offset={node?.position?.start.offset}
+          data-doc-end={node?.position?.end.offset}
+          tabIndex={-1}
+        >
+          {children}
+        </li>
+      ),
+      th: ({ children, node, ...props }) => (
+        <th {...props} data-doc-offset={node?.position?.start.offset} tabIndex={-1}>
+          {children}
+        </th>
+      ),
+      td: ({ children, node, ...props }) => (
+        <td {...props} data-doc-offset={node?.position?.start.offset} tabIndex={-1}>
+          {children}
+        </td>
+      ),
       table: ({ children }) => (
         <div
           className="doc-table-scroll"
@@ -130,7 +267,11 @@ export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
           <table>{children}</table>
         </div>
       ),
-      pre: ({ children }) => <pre tabIndex={0}>{children}</pre>,
+      pre: ({ children, node }) => (
+        <pre data-doc-offset={node?.position?.start.offset} tabIndex={0}>
+          {children}
+        </pre>
+      ),
       img: ({ src, alt }) =>
         src ? (
           <img src={src} alt={alt ?? ''} loading="lazy" decoding="async" />
@@ -229,20 +370,33 @@ export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
             <div className="doc-search-results">
               <p role="status">找到 {matches.length} 篇相关文档</p>
               {matches.length ? (
-                matches.map(({ document: result, excerpt }) => (
+                matches.map((match) => (
                   <a
-                    key={result.slug}
-                    href={docHref(result.slug)}
-                    onClick={() => {
+                    key={match.document.slug}
+                    href={docHref(match.document.slug, match.section?.id)}
+                    onClick={(event) => {
+                      if (
+                        event.button ||
+                        event.metaKey ||
+                        event.ctrlKey ||
+                        event.shiftKey ||
+                        event.altKey
+                      )
+                        return;
+                      searchDestination.current = { match, query };
                       setQuery('');
-                      if (result.slug === document?.slug && !section) {
-                        heading.current?.focus({ preventScroll: true });
-                        heading.current?.scrollIntoView({ block: 'start' });
+                      if (
+                        match.document.slug === document?.slug &&
+                        (match.section?.id ?? '') === section
+                      ) {
+                        event.preventDefault();
+                        setSearchNavigation((current) => current + 1);
                       }
                     }}
                   >
-                    <strong>{result.title}</strong>
-                    <span>{excerpt}</span>
+                    <strong>{match.document.title}</strong>
+                    <span className="doc-search-section">{match.section?.text ?? '本章开头'}</span>
+                    <span>{match.excerpt}</span>
                     <small>
                       阅读本章 <ArrowRight size={12} aria-hidden="true" />
                     </small>
@@ -307,7 +461,12 @@ export default function DocsReader({ hash, returnTo }: DocsReaderProps) {
                 </summary>
                 {tocLinks}
               </details>
-              <article className="doc-prose" ref={article} aria-label={document.title}>
+              <article
+                className="doc-prose"
+                ref={article}
+                aria-label={document.title}
+                tabIndex={-1}
+              >
                 <Markdown
                   remarkPlugins={[remarkGfm]}
                   skipHtml

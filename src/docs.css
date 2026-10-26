@@ -237,6 +237,10 @@
   margin: 6px 0;
   overflow-wrap: anywhere;
 }
+.doc-search-results .doc-search-section {
+  color: var(--primary);
+  font-weight: 600;
+}
 .doc-search-results small {
   font-size: 10px;
   color: var(--primary);
@@ -273,6 +277,18 @@
   font-size: 15px;
   line-height: 1.95;
   overflow-wrap: anywhere;
+}
+.doc-prose [data-doc-offset] {
+  scroll-margin-top: 100px;
+}
+.doc-prose .doc-search-target {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+::highlight(doc-search-hit) {
+  color: var(--on-primary);
+  background: var(--primary);
 }
 .doc-prose h1,
 .doc-prose h2,
@@ -678,7 +694,8 @@
     font-size: 22px;
     margin-top: 32px;
   }
-  .doc-prose :is(h1, h2, h3, h4, h5, h6) {
+  .doc-prose :is(h1, h2, h3, h4, h5, h6),
+  .doc-prose [data-doc-offset] {
     scroll-margin-top: 88px;
   }
   .doc-prose pre {

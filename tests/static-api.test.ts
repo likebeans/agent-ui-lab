@@ -59,6 +59,23 @@ describe('Pages local route contract', () => {
     expect((await staticFetch(`/api/agui/${input.runId}/cancel`, post({}))).status).toBe(404);
   });
 
+  it('rejects an abort during route dispatch without reserving the run ID', async () => {
+    const controller = new AbortController();
+    const input = runInput();
+    const pending = staticFetch('/api/agui', post(input, controller.signal));
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    expect((await staticFetch(`/api/agui/${input.runId}/cancel`, post({}))).status).toBe(404);
+
+    const response = await staticFetch('/api/agui', post(input));
+    try {
+      expect(response.status).toBe(200);
+    } finally {
+      await response.body?.cancel();
+    }
+  });
+
   it('aborts the local stream without inventing a cancellation event', async () => {
     const controller = new AbortController();
     const input = runInput();
@@ -66,10 +83,11 @@ describe('Pages local route contract', () => {
     const events: AGUIEvent[] = [];
     const consuming = consumeSse(response, (value) => events.push(EventSchemas.parse(value)));
     controller.abort();
-    await expect(consuming).rejects.toThrow();
+    await expect(consuming).rejects.toMatchObject({ name: 'AbortError' });
     expect(events.some((event) => event.type === EventType.RUN_FINISHED)).toBe(false);
+    expect((await staticFetch(`/api/agui/${input.runId}/cancel`, post({}))).status).toBe(404);
     await expect(
       staticFetch('/api/chat', post({ prompt: '表单' }, controller.signal)),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

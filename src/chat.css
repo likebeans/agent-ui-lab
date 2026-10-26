@@ -756,6 +756,23 @@
   margin-top: 9px;
   line-height: 1.6;
 }
+.chat-message-failure {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-strong);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.chat-message-failure button {
+  margin-top: 6px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--danger);
+}
 .composer-error {
   font-size: 11px;
   color: var(--danger);

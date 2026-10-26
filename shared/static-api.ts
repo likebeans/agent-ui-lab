@@ -28,6 +28,7 @@ export async function staticFetch(path: string, options: RequestInit = {}): Prom
     if (path === '/api/health' && method === 'GET')
       return json({ status: 'ok', mode: 'browser-static', instanceId: LAB_INSTANCE_ID });
     const labResponse = await staticLabFetch(path, options);
+    options.signal?.throwIfAborted();
     if (labResponse) return labResponse;
     const body = typeof options.body === 'string' ? JSON.parse(options.body) : undefined;
     if (path === '/api/chat' && method === 'POST') return json(routeChat(body));
@@ -66,6 +67,7 @@ export async function staticFetch(path: string, options: RequestInit = {}): Prom
       start(sink) {
         const onAbort = () => sink.error(controller.signal.reason);
         controller.signal.addEventListener('abort', onAbort, { once: true });
+        if (controller.signal.aborted) onAbort();
         const send = async (event: Parameters<typeof EventSchemas.parse>[0]) => {
           controller.signal.throwIfAborted();
           const validated = EventSchemas.parse(event);

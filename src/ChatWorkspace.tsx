@@ -57,6 +57,7 @@ type Message = {
   text?: string;
   turnId?: string;
   interaction?: boolean;
+  failure?: { reason: string; mode: string };
 };
 const initialContext: LabContext = { trip: { city: '杭州', days: 3 } };
 
@@ -207,7 +208,6 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
   const [theme, setTheme] = useTheme();
   const [health, setHealth] = useState<'checking' | 'ready' | 'offline'>('checking');
   const [healthAttempt, setHealthAttempt] = useState(0);
-  const [error, setError] = useState('');
   const [showJump, setShowJump] = useState(false);
   const threadId = useRef(`thread-${crypto.randomUUID()}`);
   const generation = useRef(0);
@@ -336,28 +336,36 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     [],
   );
 
-  async function send(value = prompt) {
+  async function send(value = prompt, retryMessage?: Message) {
     const text = value.trim();
     if (!text || text.length > 500 || sending.current || busy) return;
     sending.current = true;
     const epoch = generation.current;
     const id = crypto.randomUUID();
+    const userMessageId = retryMessage?.id ?? `user-${id}`;
+    const requestMode = retryMessage?.failure?.mode ?? mode;
     const controller = new AbortController();
     routingController.current = controller;
     routingUpdates.current = {};
     const timeout = setTimeout(() => controller.abort(), 8000);
     setRouting(true);
-    setError('');
-    setPrompt('');
+    if (!retryMessage) setPrompt('');
     follow.current = true;
-    setMessages((previous) => [...previous, { id: `user-${id}`, role: 'user', text }]);
+    setMessages((previous) =>
+      retryMessage
+        ? previous.map((message) =>
+            message.id === userMessageId ? { ...message, failure: undefined } : message,
+          )
+        : [...previous, { id: userMessageId, role: 'user', text }],
+    );
     try {
-      const route = await resolveChatLab(text, mode, context, controller.signal);
+      const route = await resolveChatLab(text, requestMode, context, controller.signal);
       if (epoch !== generation.current) return;
       // Successful interactions during routing take precedence over its request snapshot.
       const nextContext = mergeLabContext(route.context, routingUpdates.current ?? {});
       routingUpdates.current = null;
       const history = messages.flatMap((message) => {
+        if (message.failure || message.id === userMessageId) return [];
         const turn = turns.find((item) => item.request.id === message.turnId);
         const content = message.text ?? turn?.summary;
         return content ? [{ id: message.id, role: message.role, content }] : [];
@@ -384,11 +392,16 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
       setPending(id);
     } catch (cause) {
       if (epoch !== generation.current) return;
-      setError(
-        controller.signal.aborted ? '请求超时，请确认本地服务连接后重试。' : errorMessage(cause),
+      const reason = controller.signal.aborted
+        ? '请求超时，请确认本地服务连接后重试。'
+        : errorMessage(cause);
+      setMessages((previous) =>
+        previous.map((message) =>
+          message.id === userMessageId
+            ? { ...message, failure: { reason, mode: requestMode } }
+            : message,
+        ),
       );
-      setPrompt(text);
-      setMessages((previous) => previous.filter((message) => message.id !== `user-${id}`));
       sending.current = false;
     } finally {
       clearTimeout(timeout);
@@ -413,7 +426,6 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     setRouting(false);
     setSelectedId(null);
     setTraceFocus(null);
-    setError('');
     setPrompt('');
     follow.current = true;
     input.current?.focus();
@@ -678,6 +690,18 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
                       </span>
                     )}
                     <p className="agent-prose">{message.text}</p>
+                    {message.failure && (
+                      <div className="chat-message-failure">
+                        <p role="alert">未能发送：{message.failure.reason}</p>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void send(message.text, message)}
+                        >
+                          重试这条消息
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </article>
               );
@@ -724,11 +748,6 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
               <button type="button" onClick={() => setHealthAttempt((value) => value + 1)}>
                 重新检测
               </button>
-            </p>
-          )}
-          {error && (
-            <p className="composer-error" role="alert">
-              {error}
             </p>
           )}
           <form

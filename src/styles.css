@@ -175,6 +175,36 @@ svg {
   background: var(--primary-soft);
   color: var(--primary);
 }
+.module-loading,
+.module-recovery {
+  padding: 32px 16px;
+}
+.module-recovery {
+  max-width: 640px;
+  margin: 0 auto;
+  color: var(--text);
+}
+.module-recovery h2 {
+  margin-bottom: 12px;
+  font-size: 22px;
+}
+.module-recovery p {
+  color: var(--muted);
+  line-height: 1.8;
+}
+.module-recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 20px;
+}
+.module-recovery-actions .button {
+  min-height: 44px;
+}
+.module-recovery h2:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
 .app-shell {
   min-height: 100vh;
   display: flex;

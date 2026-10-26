@@ -54,7 +54,7 @@ describe('nested document discovery', () => {
     expect(
       registry
         .slice(0, DOC_CHAPTERS.length)
-        .map(({ source, headings, plainText, ...item }) => item),
+        .map(({ source, headings, plainText, searchBlocks, ...item }) => item),
     ).toEqual(DOC_CHAPTERS);
     expect(registry.slice(DOC_CHAPTERS.length).map((item) => item.slug)).toEqual([
       'labs/foundation',
