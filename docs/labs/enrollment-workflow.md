@@ -45,6 +45,28 @@
 
 本地服务重启同样可从 SQLite 查询恢复，数据库重开和 HTTP 重启路径有自动化验证。Pages 刷新会清空事实：应显示任务不存在，不能把旧身份当作新模拟的有效任务，显式“开始新任务”后才继续。
 
+## 复制定位信息，打开旧任务
+
+在“任务定位信息”复制或选择实际 JSON，随后可以“开始新任务”，再粘贴并“打开已有任务”；本地模式也可在同一服务实例的新标签页打开。本实验与人工确认实验共用版本化定位契约，身份彼此隔离：
+
+```json
+{
+  "version": 1,
+  "labId": "enrollment-workflow",
+  "mode": "local",
+  "teachingSessionId": "session-example",
+  "taskId": "task-example"
+}
+```
+
+只接受以上五个字段。无效 JSON、额外快照或命令字段、不同实验、不同运行模式与不支持的版本均会被拒绝。复制不依赖剪贴板权限：自动复制失败时会选中文本，也可以点击“选择定位信息”后通过系统复制；禁止 sessionStorage 也不影响手动导入。
+
+“打开已有任务”只查询完整事实，不携带命令 ID，不生成、修改、确认或重放任何命令。客户端验证任务与会话、完整 A2UI 表单、checkpoint、同一运行的连续事件以及报名记录身份；全部通过后才一起切换定位信息、表单和事实，清除旧确认、最后命令与检查器记录，重新展示该任务的事件证据。恢复后不会提供旧任务命令重放按钮，后续编辑或确认仍需明确操作。
+
+当前表单有未保存内容时，包括尚未生成提议的初始草稿，需在定位表单内明确选择“放弃草稿并打开任务”或取消。即使选择放弃，若查询返回 `NOT_FOUND`、会话错配、结果未知或不完整内容，原草稿、界面和定位信息仍保留。忙碌或存在待定命令时不能切换；先核实原命令。超时或页面卸载后，迟到响应不会切换任务。
+
+Pages 的定位使用 `"mode": "pages"`。同页内开始新任务并未删除旧内存任务，仍可粘贴恢复；独立标签页或刷新后内存已经清空，旧定位只能返回 `NOT_FOUND`，不会自动 `propose` 或重试。JSON 和会话存储都不是权威业务存储。本地模式从同一实例的 SQLite 数据目录查询事实，定位信息也不负责跨实例迁移。
+
 ## 实验二：旧确认不能授权新内容
 
 1. 生成提议，展开“验证旧确认与丢失响应”，点击“保存当前确认命令”。
@@ -83,6 +105,16 @@
 - `server/labs/enrollment-workflow/store.ts`：独立命名空间，复用 SQLite 确认存储，原有实验数据互不混用。
 - `src/labs/enrollment-workflow/client.ts`：完整响应超时、契约校验、精确命令与恢复身份。
 - `src/labs/enrollment-workflow/Lab.tsx`：草稿、已保存提议、待定命令和已核实事实的交互。
+
+## 定向验证
+
+```bash
+npx vitest run tests/labs/enrollment-workflow-client.test.ts tests/labs/task-locator.test.ts
+npx playwright test e2e/enrollment-workflow.spec.ts e2e/task-locator.spec.ts
+npx playwright test --config playwright.pages.config.ts e2e/labs/enrollment-workflow/pages.spec.ts e2e/task-locator/pages.spec.ts
+```
+
+定位回归在两个实验间共用浏览器用例，覆盖有效恢复、无命令副作用、错误输入与不完整事实保留草稿、显式放弃确认、操作中与待定命令保护、剪贴板降级、375px 布局，以及 Pages 同页恢复和独立页／刷新后的内存边界。
 
 ## 完成证据
 

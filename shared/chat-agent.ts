@@ -14,22 +14,48 @@ export const chatInputSchema = z
   })
   .strict();
 
+const chineseDays: Record<string, number> = {
+  一: 1,
+  二: 2,
+  两: 2,
+  三: 3,
+  四: 4,
+  五: 5,
+  六: 6,
+  七: 7,
+};
+
+function promptError(message: string): never {
+  // Both HTTP and Pages expose the first Zod issue as the request error.
+  throw new z.ZodError([{ code: 'custom', path: ['prompt'], message }]);
+}
+
+function tripDays(prompt: string, fallback: number): number {
+  const values: number[] = [];
+  // Capture the whole quantity, including unsupported decimals, signs and ranges,
+  // before validating it. Matching only 1–7 would turn “12天” into “2天”.
+  const mentions = prompt
+    .normalize('NFKC')
+    .matchAll(
+      /([+\-−负]?\s*(?:\.[\d零〇一二两三四五六七八九十百千万亿]|[\d零〇一二两三四五六七八九十百千万亿半])[\d零〇一二两三四五六七八九十百千万亿.点半]*(?:\s*[-−–—~至到/或和、]\s*[\d零〇一二两三四五六七八九十百千万亿.点半]+)*)\s*(?:天|日)半?/gu,
+    );
+  for (const mention of mentions) {
+    const quantity = mention[1].trim();
+    if (mention[0].endsWith('半') || !/^[1-7一二两三四五六七]$/u.test(quantity))
+      promptError(`行程天数仅支持 1–7 天的整数，请修改“${mention[0].trim()}”后再发送。`);
+    values.push(chineseDays[quantity] ?? Number(quantity));
+  }
+  // Equivalent repeats are unambiguous; conflicting values require an explicit edit.
+  if (new Set(values).size > 1)
+    promptError('检测到多个不同的行程天数，请只保留一个 1–7 天的整数后再发送。');
+  return values[0] ?? fallback;
+}
+
 export function routeChat(input: unknown): ChatRoute {
   const { prompt, mode, context } = chatInputSchema.parse(input);
   const cities = ['杭州', '成都', '上海'] as const;
   const mentionedCity = cities.find((city) => prompt.includes(city));
-  const chineseDays: Record<string, number> = {
-    一: 1,
-    二: 2,
-    两: 2,
-    三: 3,
-    四: 4,
-    五: 5,
-    六: 6,
-    七: 7,
-  };
-  const dayMatch = prompt.match(/([1-7一二两三四五六七])\s*(?:天|日)/u)?.[1];
-  const days = dayMatch ? (chineseDays[dayMatch] ?? Number(dayMatch)) : context.days;
+  const days = tripDays(prompt, context.days);
   const nextContext = { city: mentionedCity ?? context.city, days };
   const protocol =
     mode !== 'auto'

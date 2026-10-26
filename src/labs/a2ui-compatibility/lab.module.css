@@ -127,11 +127,18 @@
   border-radius: 10px;
 }
 
-.conflicts {
+.conflicts,
+.unknown {
   border: 1px solid var(--amber);
   background: var(--amber-soft);
   padding: 16px;
   border-radius: 10px;
+}
+
+.unknown {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
 }
 
 .conflict {
@@ -183,6 +190,7 @@
 }
 
 .notice,
+.pendingNotice,
 .error {
   display: flex;
   align-items: flex-start;
@@ -190,6 +198,7 @@
 }
 
 .notice svg,
+.pendingNotice svg,
 .error svg {
   flex: 0 0 auto;
   margin-top: 4px;
@@ -197,6 +206,10 @@
 
 .notice {
   color: var(--green);
+}
+
+.pendingNotice {
+  color: var(--amber);
 }
 
 .error {
@@ -227,6 +240,7 @@
 
   .controls,
   .conflicts,
+  .unknown,
   .fallback {
     padding: 12px;
   }

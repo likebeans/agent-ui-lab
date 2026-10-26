@@ -20,6 +20,32 @@
 
 修改会使旧版本的确认失效。服务端只执行已经保存并被确认的那份内容；没有保存的表单草稿不能被悄悄当作确认对象。
 
+## 复制定位信息，打开已有任务
+
+生成提议后，“任务定位信息”提供可选择的完整 JSON。点击“复制定位信息”，或使用“选择定位信息”后通过系统复制。浏览器不支持剪贴板、未授予权限或禁止会话存储时，也能手动保存这段文本。
+
+```json
+{
+  "version": 1,
+  "labId": "human-approval",
+  "mode": "local",
+  "teachingSessionId": "session-example",
+  "taskId": "task-example"
+}
+```
+
+该严格契约只接受以上五个字段。定位信息不包含姓名、业务快照、草稿、命令或确认授权；教学会话是实验隔离线索，不是生产访问凭证。`labId`、`mode` 或版本不匹配、非法 ID、额外字段与无效 JSON 均会被拒绝，当前任务和草稿保留。
+
+1. 生成并保存一份提议，复制实际的定位信息；需要验证已完成事实时，可先确认报名。
+2. 点击“重置实验”，或在同一本地服务实例的新标签页打开[人工确认操作区](#labs/human-approval)。旧 SQLite 任务与报名记录仍然存在。
+3. 粘贴定位信息，点击“打开已有任务”。此操作只查询 `facts`，不发送 `propose`、确认、重试或重放命令。
+4. 当前有未保存草稿时，在表单内选择“放弃草稿并打开任务”或“保留草稿，取消打开”。初始表单中尚未生成提议的修改也算草稿。
+5. 只有完整契约、会话与任务身份校验成功后，才一起替换当前身份、表单和已核实事实，并清除旧命令实验与检查器记录。`NOT_FOUND`、会话错配、网络结果未知和不完整响应都保留原界面、草稿及定位信息。
+
+请求进行中或有待定命令时，切换入口禁用；应先查询并核实原命令。定位信息仍可复制，但不会把待定命令带到另一页面。打开请求超时、页面卸载或运行被中断后，迟到结果不能覆盖当前任务。
+
+Pages 的定位 JSON 使用 `"mode": "pages"`。同一页面内重置当前实验后，可打开仍在内存的旧任务；独立标签页和刷新后的页面拥有新的内存，旧定位返回 `NOT_FOUND`，不会自动生成新提议。保留的 JSON 只提供查询身份，不能恢复已经清空的业务事实。本地定位也只能查询当前服务实例使用的数据目录，不能跨实例搬运任务。
+
 ## 确认与版本绑定
 
 确认至少要限定提议 ID、内容版本、教学会话、有效期和操作内容。`expectedVersion` 用于防止另一页面或另一请求已经改变任务状态时继续执行旧命令；内容版本用于说明用户究竟看过哪份报名参数。
@@ -94,9 +120,9 @@ LAB_DATA_DIR=.lab-data/approval
 验证命令：
 
 ```bash
-npx vitest run tests/labs/human-approval
-npx playwright test e2e/labs/human-approval.spec.ts e2e/labs/human-approval-recovery.spec.ts
-npx playwright test --config playwright.pages.config.ts e2e/labs/human-approval/pages.spec.ts
+npx vitest run tests/labs/human-approval tests/labs/task-locator.test.ts
+npx playwright test e2e/labs/human-approval.spec.ts e2e/labs/human-approval-recovery.spec.ts e2e/task-locator.spec.ts
+npx playwright test --config playwright.pages.config.ts e2e/labs/human-approval/pages.spec.ts e2e/task-locator/pages.spec.ts
 npm run check
 ```
 

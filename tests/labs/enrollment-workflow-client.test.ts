@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { applyA2uiMessages, resolveA2uiAction } from '../../shared/a2ui';
 import type { LabRuntime } from '../../shared/lab-contract';
 import type { WorkflowFacts } from '../../shared/labs/enrollment-workflow/contract';
@@ -6,7 +6,12 @@ import { createWorkflowService } from '../../shared/labs/enrollment-workflow/eng
 import { createMemoryWorkflowStore } from '../../shared/labs/enrollment-workflow/memory';
 import { workflowForm } from '../../shared/labs/enrollment-workflow/surface';
 import type { ApprovalCommand } from '../../shared/labs/human-approval/types';
-import { readWorkflow, type WorkflowLocator } from '../../src/labs/enrollment-workflow/client';
+import {
+  readWorkflow,
+  openWorkflowTask,
+  type WorkflowLocator,
+} from '../../src/labs/enrollment-workflow/client';
+import type { TaskLocator } from '../../shared/labs/task-locator';
 
 function fixture() {
   const session = 'restore-form-session';
@@ -42,7 +47,7 @@ function fixture() {
       focusTrace() {},
     };
   }
-  return { value, locator, runtime };
+  return { value, locator, runtime, service };
 }
 
 function changeModel(value: WorkflowFacts, patch: Record<string, unknown>) {
@@ -127,4 +132,156 @@ describe('workflow recovery form validation', () => {
       expect(value).toEqual(originalFacts);
     },
   );
+});
+
+function portable(locator: WorkflowLocator, mode: LabRuntime['mode'] = 'local'): TaskLocator {
+  return {
+    version: 1,
+    labId: 'enrollment-workflow',
+    mode,
+    teachingSessionId: locator.session,
+    taskId: locator.taskId,
+  };
+}
+
+describe('opening a workflow identity is query-only', () => {
+  it.each(['local', 'pages'] as const)(
+    'reads %s checkpoint, full events and surface without importing or sending commands',
+    async (mode) => {
+      const { value, locator, runtime, service } = fixture();
+      const before = structuredClone(value);
+      const response = { ...value, receipt: null };
+      const request = vi.fn<LabRuntime['request']>(async () => Response.json(response));
+      expect(
+        await openWorkflowTask({ ...runtime(value), mode, request }, portable(locator, mode)),
+      ).toEqual({
+        kind: 'known',
+        value: response,
+      });
+      expect(request).toHaveBeenCalledTimes(1);
+      const [path, options] = request.mock.calls[0];
+      expect(path).toBe(`/api/labs/enrollment-workflow/facts?taskId=${locator.taskId}&afterSeq=0`);
+      expect(options?.method).toBe('GET');
+      expect(options?.body).toBeUndefined();
+      expect(new Headers(options?.headers).get('X-Teaching-Session')).toBe(locator.session);
+      expect(
+        service.facts({ teachingSessionId: locator.session }, { taskId: locator.taskId }),
+      ).toMatchObject({
+        task: before.task,
+        events: before.events,
+        checkpoint: before.checkpoint,
+        recordCount: 0,
+      });
+    },
+  );
+
+  it.each([
+    ...invalidForms,
+    [
+      'foreign thread',
+      (value: WorkflowFacts) => {
+        value.task.threadId = 'foreign-session';
+      },
+    ],
+    [
+      'foreign proposal session',
+      (value: WorkflowFacts) => {
+        value.task.state.proposal.teachingSessionId = 'foreign-session';
+      },
+    ],
+    [
+      'foreign task',
+      (value: WorkflowFacts) => {
+        value.task.taskId = 'foreign-task';
+      },
+    ],
+    [
+      'missing event',
+      (value: WorkflowFacts) => {
+        value.events.shift();
+      },
+    ],
+    [
+      'foreign event',
+      (value: WorkflowFacts) => {
+        value.events[0].taskId = 'foreign-task';
+      },
+    ],
+    [
+      'wrong run',
+      (value: WorkflowFacts) => {
+        value.checkpoint.cursor.runId = 'foreign-run';
+      },
+    ],
+    [
+      'incomplete checkpoint',
+      (value: WorkflowFacts) => {
+        delete (value as Partial<WorkflowFacts>).checkpoint;
+      },
+    ],
+  ] as Array<[string, (value: WorkflowFacts) => void]>)(
+    'rejects %s while leaving caller locator, pending command and facts unchanged',
+    async (_label, mutate) => {
+      const { value, locator, runtime } = fixture();
+      const before = structuredClone({ value, locator });
+      const malformed = structuredClone(value);
+      mutate(malformed);
+      expect(await openWorkflowTask(runtime(malformed), portable(locator))).toMatchObject({
+        kind: 'unknown',
+      });
+      expect({ value, locator }).toEqual(before);
+    },
+  );
+
+  it.each(['NOT_FOUND', 'SESSION_MISMATCH'] as const)(
+    'keeps %s read-only with no fallback command',
+    async (code) => {
+      const { locator, value, runtime } = fixture();
+      const request = vi.fn<LabRuntime['request']>(async () =>
+        Response.json({ status: 'rejected', code, reason: '未打开任务' }),
+      );
+      expect(
+        await openWorkflowTask({ ...runtime(value), request }, portable(locator)),
+      ).toMatchObject({
+        kind: 'known',
+        value: { status: 'rejected', code },
+      });
+      expect(request).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('rejects cross-lab, cross-mode or command-bearing identities before requesting', () => {
+    const { locator, value, runtime } = fixture();
+    const request = vi.fn<LabRuntime['request']>();
+    const client = { ...runtime(value), request };
+    const target = portable(locator);
+    expect(() => openWorkflowTask(client, { ...target, labId: 'human-approval' })).toThrow();
+    expect(() => openWorkflowTask(client, { ...target, mode: 'pages' })).toThrow();
+    expect(() =>
+      openWorkflowTask(client, { ...target, pending: locator.pending } as TaskLocator),
+    ).toThrow();
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('releases an aborted open query and ignores its late response', async () => {
+    const { locator, value, runtime } = fixture();
+    const controller = new AbortController();
+    let finish!: (response: Response) => void;
+    const client = {
+      ...runtime(value),
+      request: () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+      trace: vi.fn(),
+    };
+    const opening = openWorkflowTask(client, portable(locator), controller.signal);
+    controller.abort();
+    expect(await opening).toMatchObject({ kind: 'unknown' });
+    expect(client.trace).toHaveBeenCalledTimes(1);
+    finish(Response.json(value));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(client.trace).toHaveBeenCalledTimes(1);
+  });
 });

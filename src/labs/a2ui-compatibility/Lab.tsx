@@ -4,6 +4,7 @@ import type { LabComponentProps } from '../../../shared/lab-contract';
 import { errorMessage } from '../../../shared/http';
 import { resolveA2uiAction, type A2uiSurface } from '../../../shared/a2ui';
 import type { JsonValue } from '../../../shared/json-pointer';
+import { COMPATIBILITY_DROP_RESPONSE_HEADER } from '../../../shared/labs/a2ui-compatibility/contract';
 import type {
   ActionEnvelope,
   ClientCapabilities,
@@ -67,6 +68,9 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [saved, setSaved] = useState<SavedAction | null>(null);
+  const [dropResponse, setDropResponse] = useState(false);
+  const [unknownAction, setUnknownAction] = useState(false);
+  const unknownActionRef = useRef(false);
   const [copied, setCopied] = useState(false);
   const mounted = useRef<HTMLDivElement>(null);
   const errorSummary = useRef<HTMLDivElement>(null);
@@ -122,13 +126,18 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
       note: 'expectedRevision 是应用层并发校验，action 内部仍是原始 A2UI 0.9.1 结构。',
     });
     const timeout = AbortSignal.timeout(8_000);
-    const response = await runtime.request(path, {
-      ...options,
-      signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
-      headers: { 'Content-Type': 'application/json', ...options.headers },
-    });
+    const signal = AbortSignal.any([
+      runtime.signal,
+      timeout,
+      ...(options.signal ? [options.signal] : []),
+    ]);
+    const headers = new Headers(options.headers);
+    headers.set('Content-Type', 'application/json');
+    signal.throwIfAborted();
+    const response = await runtime.request(path, { ...options, signal, headers });
     const reply = await readCompatibilityReply(response);
-    runtime.signal.throwIfAborted();
+    // A transport may finish consuming a body after timeout or unmount.
+    signal.throwIfAborted();
     const snapshot = snapshotFrom(reply);
     runtime.trace({
       protocol: 'a2ui',
@@ -162,6 +171,17 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
   }
 
   function acceptSnapshot(snapshot: CompatibilitySnapshot, preserve: boolean) {
+    const previous = draftRef.current;
+    const previousDocument = previous?.snapshot.documentId ?? incompatible?.documentId;
+    if (previousDocument !== snapshot.documentId) setDropResponse(false);
+    const confirmed =
+      unknownActionRef.current &&
+      previousDocument === snapshot.documentId &&
+      snapshot.revision >= (previous?.snapshot.revision ?? 0);
+    if (previousDocument !== snapshot.documentId || confirmed) {
+      unknownActionRef.current = false;
+      setUnknownAction(false);
+    }
     setSaved((previous) => (previous?.documentId === snapshot.documentId ? previous : null));
     // Preserve supported drafts even while the simulated client hides their controls.
     const result = checkCompatibility(snapshot, DEFAULT_CAPABILITIES);
@@ -188,20 +208,26 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
     return next;
   }
 
-  async function perform(operation: () => Promise<void>) {
-    if (inFlight.current) return;
+  async function perform(operation: () => Promise<void>, action = false) {
+    if (inFlight.current || runtime.signal.aborted) return;
     inFlight.current = true;
     setBusy(true);
     setError('');
     try {
       await operation();
     } catch (cause) {
-      if (!runtime.signal.aborted)
+      if (!runtime.signal.aborted) {
+        if (action) {
+          unknownActionRef.current = true;
+          setUnknownAction(true);
+          setNotice('动作结果未知；草稿与已保存动作仍保留。请先读取远端，页面不会自动重发。');
+        }
         setError(
           cause instanceof DOMException && cause.name === 'TimeoutError'
             ? '请求超时。请先读取远端确认版本与成功动作计数，再决定是否重试。'
             : errorMessage(cause),
         );
+      }
     } finally {
       inFlight.current = false;
       if (!runtime.signal.aborted) setBusy(false);
@@ -236,14 +262,22 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
         return;
       }
       const snapshot = snapshotFrom(reply);
-      if (snapshot) acceptSnapshot(snapshot, true);
+      if (snapshot) {
+        const wasUnknown = unknownActionRef.current;
+        const next = acceptSnapshot(snapshot, true);
+        if (wasUnknown && !unknownActionRef.current) {
+          setNotice(
+            `已读取远端版本 ${snapshot.revision}，成功动作共 ${snapshot.acceptedActions} 次。版本与计数不能单独证明是哪次动作成功；${next?.conflicts.length ? '后续草稿已保留，请先逐项选择冲突。' : '请核对远端值后决定下一步。'}页面没有重发动作。`,
+          );
+        }
+      }
       if (reply.kind === 'conflict') setError(reply.message);
     });
   }
 
   async function change(change: RemoteChange) {
     const current = draftRef.current;
-    if (!current) return;
+    if (!current || unknownActionRef.current) return;
     await perform(async () => {
       const reply = await request(
         `${basePath}/${encodeURIComponent(current.snapshot.documentId)}/remote`,
@@ -281,6 +315,10 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
   async function submit(savedAction?: SavedAction) {
     const current = draftRef.current;
     if (!current) return;
+    if (unknownActionRef.current) {
+      setError('动作结果未知，请先读取远端确认版本与成功动作计数，再决定下一步。');
+      return;
+    }
     if (savedAction && savedAction.documentId !== current.snapshot.documentId) {
       setSaved(null);
       setError('保存的动作属于其他文档，请在当前文档重新保存。');
@@ -293,10 +331,14 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
       const tracked = trackDraftSubmission(submitted, savedAction?.surface ?? submitted.surface);
       draftRef.current = tracked;
       setDraft(tracked);
+      // Consume only when an action is actually initiated, including domain rejections.
+      const drop = dropResponse;
+      setDropResponse(false);
       const reply = await request(
         `${basePath}/${encodeURIComponent(submitted.snapshot.documentId)}/actions`,
         {
           method: 'POST',
+          headers: drop ? { [COMPATIBILITY_DROP_RESPONSE_HEADER]: '1' } : undefined,
           body: JSON.stringify(input),
         },
       );
@@ -338,7 +380,7 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
         setError(reply.message);
         setNotice('服务端拒绝过期动作，成功动作计数没有增加。请确认最新值后重新提交。');
       }
-    });
+    }, true);
   }
 
   function edit(path: string, value: JsonValue) {
@@ -442,6 +484,9 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
               draftRef.current = null;
               setIncompatible(null);
               setSaved(null);
+              setDropResponse(false);
+              unknownActionRef.current = false;
+              setUnknownAction(false);
               setIssues([]);
               setError('');
               setDocumentId(`form-${crypto.randomUUID()}`);
@@ -494,7 +539,7 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
       )}
       {ready && (
         <>
-          <fieldset className={styles.controls} disabled={busy}>
+          <fieldset className={styles.controls} disabled={busy || unknownAction}>
             <legend>2. 修改服务端，观察草稿如何合并</legend>
             <p>
               这些按钮先改变服务端，再读取新快照。也可在另一个页面使用相同 ID
@@ -622,7 +667,7 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
               <button
                 type="button"
                 className="button secondary"
-                disabled={busy || !!draft.conflicts.length}
+                disabled={busy || unknownAction || !!draft.conflicts.length}
                 onClick={() => {
                   const envelope = actionEnvelope();
                   if (!envelope) return;
@@ -640,7 +685,7 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
               <button
                 type="button"
                 className="button secondary"
-                disabled={busy || !saved}
+                disabled={busy || unknownAction || !saved}
                 onClick={() => void submit(saved!)}
               >
                 发送已保存动作
@@ -654,7 +699,41 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
               </p>
             )}
           </section>
+          <fieldset className={styles.controls} disabled={busy || unknownAction}>
+            <legend>4. 提交后丢失响应</legend>
+            <label className={styles.checkbox}>
+              <input
+                type="checkbox"
+                checked={dropResponse}
+                aria-describedby={`${idPrefix}-drop-help`}
+                onChange={(event) => setDropResponse(event.target.checked)}
+              />
+              下一次提交成功后丢失响应
+            </label>
+            <p id={`${idPrefix}-drop-help`} className={styles.hint}>
+              勾选后，通过表单按钮或“发送已保存动作”发起下一次动作时消耗开关。只有服务端接受动作后才丢弃响应；校验或版本拒绝照常显示。读取、保存动作和客户端校验失败不会消耗开关。
+            </p>
+          </fieldset>
         </>
+      )}
+      {unknownAction && (
+        <section className={styles.unknown} aria-label="动作结果待确认">
+          <h3>动作结果未知，先读取远端</h3>
+          <p>
+            未收到可确认的动作回执；服务端可能已经执行。当前版本和计数仍是上次确认的快照，草稿与已保存动作仍保留。先读取远端核对业务修订、成功动作计数与字段值，再决定下一步。页面不会自动重发。
+          </p>
+          <div className={styles.actions}>
+            <button
+              className="button secondary"
+              type="button"
+              disabled={busy}
+              onClick={() => void load(false)}
+            >
+              <RefreshCw size={15} aria-hidden="true" />
+              读取远端确认结果
+            </button>
+          </div>
+        </section>
       )}
       {error && (
         <p className={styles.error} role="alert">
@@ -662,8 +741,12 @@ export default function CompatibilityLab({ runtime, active, onResetTrace }: LabC
           {error}
         </p>
       )}
-      <p className={styles.notice} role="status">
-        <CheckCircle2 size={16} aria-hidden="true" />
+      <p className={unknownAction ? styles.pendingNotice : styles.notice} role="status">
+        {unknownAction ? (
+          <AlertCircle size={16} aria-hidden="true" />
+        ) : (
+          <CheckCircle2 size={16} aria-hidden="true" />
+        )}
         {busy ? '正在读取或校验…' : notice}
       </p>
       <details className={styles.evidence}>

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Database, History, ShieldCheck } from 'lucide-react';
 import type { LabComponentProps } from '../../../shared/lab-contract';
+import type { TaskLocator as PortableTaskLocator } from '../../../shared/labs/task-locator';
+import { TaskLocator } from '../../components/TaskLocator';
 import {
   applyA2uiMessages,
   resolveA2uiAction,
@@ -19,6 +21,7 @@ import { SurfaceRenderer, type A2uiFieldIssue } from '../../components/A2uiSurfa
 import {
   loadWorkflowLocator,
   newWorkflowLocator,
+  openWorkflowTask,
   readWorkflow,
   restoreWorkflowSurface,
   saveWorkflowLocator,
@@ -61,6 +64,7 @@ export default function EnrollmentWorkflowLab({
   const surfaceRef = useRef(surface);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const openingRef = useRef<AbortController | null>(null);
   const [needsRead, setNeedsRead] = useState(boot.restored);
   const [pendingQueried, setPendingQueried] = useState(false);
   const [storageAvailable, setStorageAvailable] = useState(boot.storageAvailable);
@@ -116,7 +120,10 @@ export default function EnrollmentWorkflowLab({
       surfaceRef.current = next;
       setConflict(false);
     } else if (revisionChanged) setConflict(true);
-    for (const event of events.slice(previous?.events.length ?? 0)) {
+    traceFacts(value, previous?.task.taskId === value.task.taskId ? previous.events.length : 0);
+  }
+  function traceFacts(value: WorkflowFacts, previousEventCount = 0) {
+    for (const event of value.events.slice(previousEventCount)) {
       runtime.trace({
         taskId: event.taskId,
         threadId: value.task.threadId,
@@ -210,6 +217,7 @@ export default function EnrollmentWorkflowLab({
     }
     return () => {
       mounted.current = false;
+      openingRef.current?.abort();
     };
   }, []);
   useEffect(() => {
@@ -316,6 +324,72 @@ export default function EnrollmentWorkflowLab({
         proposalVersion: proposal.proposalVersion,
       }),
     );
+  }
+  async function openExisting(target: PortableTaskLocator) {
+    if (!active || busyRef.current || locatorRef.current.pending)
+      throw new Error('请先完成当前操作并核实待定命令，再打开已有任务。');
+    const previous = locatorRef.current;
+    const controller = new AbortController();
+    openingRef.current = controller;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const reply = await openWorkflowTask(runtime, target, controller.signal);
+      if (!alive() || controller.signal.aborted || locatorRef.current !== previous) return;
+      if (reply.kind === 'unknown')
+        throw new Error(`打开任务的事实查询结果未知。${reply.reason} 当前任务与草稿保持不变。`);
+      if (reply.value.status !== 'found')
+        throw new Error(
+          `${reply.value.code}：${reply.value.reason} 当前任务与草稿保持不变。${
+            runtime.mode === 'pages' && reply.value.code === 'NOT_FOUND'
+              ? 'Pages 只保留当前页面内存；独立标签页或刷新后无法恢复，也不会自动生成提议。'
+              : ''
+          }`,
+        );
+      const value = reply.value;
+      const events = appendWorkflowEvents(
+        [],
+        value.events,
+        value.task.taskId,
+        value.checkpoint.cursor.runId,
+      );
+      if (events.length !== value.checkpoint.cursor.afterSeq)
+        throw new Error('事件记录与 checkpoint 不一致，当前任务与草稿保持不变。');
+      const nextSurface = restoreWorkflowSurface(value);
+      if (
+        factsRef.current?.task.taskId === value.task.taskId &&
+        factsRef.current.task.version > value.task.version
+      )
+        throw new Error('查询返回了比当前已核实版本更旧的任务，当前任务与草稿保持不变。');
+      // Publish identity, surface and facts only after every query contract has passed.
+      remember({
+        session: target.teachingSessionId,
+        taskId: target.taskId,
+        pending: null,
+        last: null,
+      });
+      setFacts(value);
+      factsRef.current = value;
+      setSurface(nextSurface);
+      surfaceRef.current = nextSurface;
+      setNeedsRead(false);
+      setPendingQueried(false);
+      setMissing(false);
+      setConflict(false);
+      setStale(null);
+      setError('');
+      setIssues([]);
+      setDrop(false);
+      setNotice(`已打开已有任务。报名记录数：${value.recordCount}；本次只查询事实。`);
+      onResetTrace();
+      traceFacts(value);
+    } finally {
+      if (openingRef.current === controller) {
+        openingRef.current = null;
+        busyRef.current = false;
+        if (alive()) setBusy(false);
+      }
+    }
   }
   function reset() {
     if (busyRef.current || locator.pending) return;
@@ -535,6 +609,27 @@ export default function EnrollmentWorkflowLab({
           )}
         </section>
       </div>
+      <TaskLocator
+        labId="enrollment-workflow"
+        mode={runtime.mode}
+        current={
+          facts || locator.pending || locator.last || needsRead
+            ? {
+                version: 1,
+                labId: 'enrollment-workflow',
+                mode: runtime.mode,
+                teachingSessionId: locator.session,
+                taskId: locator.taskId,
+              }
+            : null
+        }
+        disabled={!active || busy || Boolean(locator.pending)}
+        hasUnsavedDraft={
+          JSON.stringify(surface.model.form) !==
+          JSON.stringify(formFor(task, locator.taskId).model.form)
+        }
+        onOpen={openExisting}
+      />
       <details className={styles.panel}>
         <summary>3. 验证旧确认与丢失响应</summary>
         <div className={styles.experiments}>

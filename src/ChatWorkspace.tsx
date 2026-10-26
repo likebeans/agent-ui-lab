@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Code2,
   LoaderCircle,
+  Menu,
   MessageSquare,
   Moon,
   PanelRightClose,
@@ -191,6 +192,11 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [prompt, setPrompt] = useState('');
+  const promptRevision = useRef(0);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const navigation = useRef<HTMLDivElement>(null);
+  const navigationToggle = useRef<HTMLButtonElement>(null);
   const [mode, setMode] = useState('auto');
   const [context, setContext] = useState<LabContext>(initialContext);
   const [pending, setPending] = useState<string | null>(null);
@@ -229,6 +235,39 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
   useEffect(() => {
     sending.current = busy;
   }, [busy]);
+
+  const closeNavigation = useCallback(() => {
+    setNavigationOpen(false);
+    navigationToggle.current?.focus();
+  }, []);
+  useEffect(() => {
+    if (!navigationOpen) return;
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeNavigation();
+    };
+    const outside = (event: PointerEvent) => {
+      if (!navigation.current?.contains(event.target as Node)) setNavigationOpen(false);
+    };
+    document.addEventListener('keydown', key);
+    document.addEventListener('pointerdown', outside);
+    return () => {
+      document.removeEventListener('keydown', key);
+      document.removeEventListener('pointerdown', outside);
+    };
+  }, [navigationOpen, closeNavigation]);
+  useEffect(() => {
+    if (!active || inspectorOpen) setNavigationOpen(false);
+  }, [active, inspectorOpen]);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 780px)');
+    const changed = () => {
+      if (!media.matches) setNavigationOpen(false);
+    };
+    media.addEventListener('change', changed);
+    return () => media.removeEventListener('change', changed);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -347,31 +386,50 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     [],
   );
 
-  async function send(value = prompt, retryMessage?: Message) {
-    const text = value.trim();
+  async function send(value?: string, retryMessage?: Message) {
+    const draft = value ?? prompt;
+    const text = draft.trim();
     if (!text || text.length > 500 || sending.current || busy) return;
+    const editedMessage =
+      value === undefined
+        ? messages.find((message) => message.id === editingMessageId && message.failure)
+        : undefined;
+    const previousMessage = retryMessage ?? editedMessage;
+    const draftRevision = promptRevision.current;
     sending.current = true;
     const epoch = generation.current;
     const id = crypto.randomUUID();
-    const userMessageId = retryMessage?.id ?? `user-${id}`;
-    const requestMode = retryMessage?.failure?.mode ?? mode;
+    const userMessageId = previousMessage?.id ?? `user-${id}`;
+    const requestMode = previousMessage?.failure?.mode ?? mode;
     const controller = new AbortController();
     routingController.current = controller;
     routingUpdates.current = {};
     const timeout = setTimeout(() => controller.abort(), 8000);
     setRouting(true);
-    if (!retryMessage) setPrompt('');
+    if (!retryMessage) {
+      setPrompt('');
+      setEditingMessageId(null);
+    }
     follow.current = true;
     setMessages((previous) =>
-      retryMessage
+      previousMessage
         ? previous.map((message) =>
-            message.id === userMessageId ? { ...message, failure: undefined } : message,
+            message.id === userMessageId ? { ...message, text, failure: undefined } : message,
           )
         : [...previous, { id: userMessageId, role: 'user', text }],
     );
     try {
       const route = await resolveChatLab(text, requestMode, context, controller.signal);
       if (epoch !== generation.current) return;
+      if (retryMessage) {
+        if (
+          retryMessage.id === editingMessageId &&
+          promptRevision.current === draftRevision &&
+          prompt.trim() === text
+        )
+          setPrompt('');
+        setEditingMessageId((current) => (current === retryMessage.id ? null : current));
+      }
       // Successful interactions during routing take precedence over its request snapshot.
       const nextContext = mergeLabContext(route.context, routingUpdates.current ?? {});
       routingUpdates.current = null;
@@ -413,6 +471,12 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
             : message,
         ),
       );
+      // Restore only a submitted composer draft that the user has not edited since.
+      // A deliberately cleared next draft also counts as an edit.
+      if (value === undefined && promptRevision.current === draftRevision) {
+        setPrompt(draft);
+        setEditingMessageId(userMessageId);
+      }
       sending.current = false;
     } finally {
       clearTimeout(timeout);
@@ -423,8 +487,17 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
     }
   }
 
+  function editFailedMessage(message: Message) {
+    promptRevision.current += 1;
+    setPrompt(message.text ?? '');
+    setEditingMessageId(message.id);
+    input.current?.focus();
+  }
+
   function reset() {
     generation.current += 1;
+    promptRevision.current += 1;
+    setEditingMessageId(null);
     routingController.current?.abort();
     routingUpdates.current = null;
     sending.current = false;
@@ -481,6 +554,8 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
                 key={id}
                 type="button"
                 onClick={() => {
+                  promptRevision.current += 1;
+                  setEditingMessageId(null);
                   setPrompt(info.prompt);
                   input.current?.focus();
                 }}
@@ -523,6 +598,52 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
       <section className="chat-main" inert={compact && inspectorOpen}>
         <header className="chat-topbar">
           <div>
+            <div
+              className="chat-mobile-navigation"
+              ref={navigation}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                  setNavigationOpen(false);
+              }}
+            >
+              <button
+                ref={navigationToggle}
+                type="button"
+                className="icon-button"
+                aria-label={navigationOpen ? '关闭聊天导航' : '打开聊天导航'}
+                aria-expanded={navigationOpen}
+                aria-controls="chat-mobile-navigation"
+                onClick={() => setNavigationOpen((open) => !open)}
+              >
+                {navigationOpen ? (
+                  <X size={19} aria-hidden="true" />
+                ) : (
+                  <Menu size={19} aria-hidden="true" />
+                )}
+              </button>
+              <nav
+                id="chat-mobile-navigation"
+                className="chat-mobile-navigation-links"
+                aria-label="聊天导航"
+                hidden={!navigationOpen}
+              >
+                <a href="#overview" onClick={closeNavigation}>
+                  <Code2 size={17} aria-hidden="true" />
+                  独立实验与源码导读
+                  <ArrowRight size={15} aria-hidden="true" />
+                </a>
+                <a href="#roadmap" onClick={closeNavigation}>
+                  <ArrowRight size={17} aria-hidden="true" />
+                  实践路线
+                  <ArrowRight size={15} aria-hidden="true" />
+                </a>
+                <a href={docHref('map')} onClick={closeNavigation}>
+                  <BookOpen size={17} aria-hidden="true" />
+                  学习文档
+                  <ArrowRight size={15} aria-hidden="true" />
+                </a>
+              </nav>
+            </div>
             <Bot size={19} />
             <strong>Agent 对话</strong>
             <span className="chat-header-divider" />
@@ -706,13 +827,22 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
                     {message.failure && (
                       <div className="chat-message-failure">
                         <p role="alert">未能发送：{message.failure.reason}</p>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void send(message.text, message)}
-                        >
-                          重试这条消息
-                        </button>
+                        <div className="chat-failure-actions">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => editFailedMessage(message)}
+                          >
+                            修改这条消息
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void send(message.text, message)}
+                          >
+                            重试这条消息
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -763,6 +893,14 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
               </button>
             </p>
           )}
+          {editingMessageId && (
+            <p className="composer-editing" role="status">
+              正在修改未发送的消息
+              <button type="button" onClick={() => setEditingMessageId(null)}>
+                改为新消息
+              </button>
+            </p>
+          )}
           <form
             className="chat-composer"
             onSubmit={(event) => {
@@ -782,7 +920,10 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
                   ? 'Agent 正在回复，你可以先写下下一句话…'
                   : '试试「帮我规划杭州三日游」，然后让它生成表单…'
               }
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => {
+                promptRevision.current += 1;
+                setPrompt(event.target.value);
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                   event.preventDefault();

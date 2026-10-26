@@ -1,4 +1,5 @@
 import type { LabMode, LabRuntime } from '../../../shared/lab-contract';
+import { validateTaskLocator, type TaskLocator } from '../../../shared/labs/task-locator';
 import {
   APPROVAL_API,
   DROP_RESPONSE_HEADER,
@@ -103,6 +104,7 @@ function isTask(value: unknown): value is ApprovalTask {
     identifier(proposal.proposalId) &&
     integer(proposal.proposalVersion, 1) &&
     identifier(proposal.teachingSessionId) &&
+    proposal.teachingSessionId === value.threadId &&
     isInput(proposal.content) &&
     member(proposalStatuses, proposal.status) &&
     timestamp(proposal.createdAt) &&
@@ -391,13 +393,14 @@ export function queryFacts(
   teachingSessionId: string,
   taskId: string,
   commandId?: string,
+  signal?: AbortSignal,
 ): Promise<Reply<ApprovalFactsResult>> {
   const query = { taskId, ...(commandId ? { commandId } : {}) };
   const search = new URLSearchParams(query);
   return requestDomain(
     runtime,
     `${APPROVAL_API}/facts?${search}`,
-    { headers: { [TEACHING_SESSION_HEADER]: teachingSessionId } },
+    { headers: { [TEACHING_SESSION_HEADER]: teachingSessionId }, signal },
     { taskId, threadId: teachingSessionId },
     query,
     'human-approval/facts',
@@ -405,6 +408,17 @@ export function queryFacts(
       isFacts(value) &&
       (value.status !== 'found' ||
         (value.task.taskId === taskId &&
+          value.task.threadId === teachingSessionId &&
           value.task.state.proposal.teachingSessionId === teachingSessionId)),
   );
+}
+
+/** Validate the portable scope before making exactly one facts query, without a command ID. */
+export function openApprovalTask(
+  runtime: LabRuntime,
+  locator: TaskLocator,
+  signal?: AbortSignal,
+): Promise<Reply<ApprovalFactsResult>> {
+  const target = validateTaskLocator(locator, { labId: 'human-approval', mode: runtime.mode });
+  return queryFacts(runtime, target.teachingSessionId, target.taskId, undefined, signal);
 }

@@ -1,0 +1,102 @@
+.root,
+.form,
+.field {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.root {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  color: var(--muted);
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.root textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  color: var(--text);
+  background: var(--surface);
+  font: 13px/1.6 var(--font-mono, monospace);
+  overflow-wrap: anywhere;
+}
+
+.root textarea[readonly] {
+  background: var(--surface-soft);
+}
+
+.root textarea[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.root :is(button, a) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.root :is(button, textarea, a):focus-visible,
+.confirmation:focus-visible,
+.error:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.form > button {
+  justify-self: start;
+}
+
+.error,
+.confirmation {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.error a {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  text-decoration: underline;
+}
+
+.confirmation {
+  color: var(--amber);
+  background: var(--amber-soft);
+  border-color: var(--amber);
+}
+
+@media (max-width: 600px) {
+  .root {
+    padding: 16px;
+  }
+
+  .root textarea {
+    font-size: 16px;
+  }
+}

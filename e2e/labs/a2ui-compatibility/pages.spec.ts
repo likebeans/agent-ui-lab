@@ -6,8 +6,47 @@ import {
   exerciseCompatibilityFallbacks,
   exerciseCompatibilityValidation,
 } from '../../a2ui-compatibility.helpers';
+import {
+  exerciseCompatibilityDropRejections,
+  exerciseCompatibilityDropReset,
+  exerciseCompatibilityLostResponse,
+  exerciseCompatibilityLostSavedResponse,
+} from '../../a2ui-compatibility-recovery.helpers';
 
 import { observeStaticRequests } from '../../static-requests';
+
+test('Pages W3 exposes the one-shot loss control and confirms committed facts with a read', async ({
+  page,
+}) => {
+  const verify = observeStaticRequests(page);
+  await page.goto('./#labs/a2ui-compatibility');
+  await exerciseCompatibilityLostResponse(page);
+  verify();
+});
+
+for (const laterDays of ['2', '5']) {
+  test(`Pages W3 lost saved-action receipt keeps later draft ${laterDays} and requires a conflict choice`, async ({
+    page,
+  }) => {
+    const verify = observeStaticRequests(page);
+    await page.goto('./#labs/a2ui-compatibility');
+    await exerciseCompatibilityLostSavedResponse(page, laterDays);
+    verify();
+  });
+}
+
+test('Pages W3 loss control keeps rejections readable and clears on reset or document switch', async ({
+  page,
+}) => {
+  const verify = observeStaticRequests(page);
+  await page.goto('./#labs/a2ui-compatibility');
+  await exerciseCompatibilityDropRejections(page);
+  await compatibilityLab(page)
+    .getByRole('button', { name: '重置并使用新 ID', exact: true })
+    .click();
+  await exerciseCompatibilityDropReset(page);
+  verify();
+});
 
 test('Pages W3 capabilities, field validation, conflicts and stale actions use only page memory', async ({
   page,

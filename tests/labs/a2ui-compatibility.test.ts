@@ -1023,6 +1023,100 @@ async function httpFixture() {
 }
 
 describe('compatibility reply handling at transport boundaries', () => {
+  it('commits once before losing the Pages response body and recovers only through a read', async () => {
+    const documentId = `drop-${crypto.randomUUID()}`;
+    const initial = getSnapshot(
+      await readCompatibilityReply(
+        await staticFetch(root, {
+          ...post({ documentId, scenario: 'standard' }),
+          headers: { 'X-A2UI-Compatibility-Drop-Response': '1' },
+        }),
+      ),
+    );
+    const saved = updateDraft(validDraft(initial), '/form/days', '3');
+    const edited = updateDraft(saved, '/form/days', '2');
+    const pending = trackDraftSubmission(edited, saved.surface);
+    const envelope = buildActionEnvelope(saved);
+    const response = await staticFetch(`${root}/${documentId}/actions`, {
+      ...post(envelope),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-A2UI-Compatibility-Drop-Response': '1',
+      },
+    });
+    // The outer static API must not turn this into a domain rejection or expose a receipt.
+    await expect(readCompatibilityReply(response)).rejects.toThrow('响应连接已中断');
+    expect(pending.snapshot).toMatchObject({ revision: 1, acceptedActions: 0 });
+    expect(field(pending, '/form/days')).toBe('2');
+    const latest = getSnapshot(
+      await readCompatibilityReply(
+        await staticFetch(`${root}/${documentId}`, {
+          headers: { 'X-A2UI-Compatibility-Drop-Response': '1' },
+        }),
+      ),
+    );
+    expect(latest).toMatchObject({ revision: 2, acceptedActions: 1 });
+    expect(surface(latest).model.form).toHaveProperty('days', '3');
+    const rebased = rebaseDraft(pending, latest);
+    expect(field(rebased, '/form/days')).toBe('2');
+    expect(rebased.conflicts).toMatchObject([{ componentId: 'days', local: '2', remote: '3' }]);
+    expect(() => buildActionEnvelope(rebased)).toThrow('冲突');
+    expect(
+      await readCompatibilityReply(
+        await staticFetch(`${root}/${documentId}/actions`, post(envelope)),
+      ),
+    ).toMatchObject({
+      kind: 'conflict',
+      snapshot: { revision: 2, acceptedActions: 1 },
+    });
+  });
+
+  it('keeps Pages field, business and revision rejections readable with the drop header', async () => {
+    const documentId = `reject-${crypto.randomUUID()}`;
+    const path = `${root}/${documentId}`;
+    const initial = getSnapshot(
+      await readCompatibilityReply(
+        await staticFetch(root, post({ documentId, scenario: 'standard' })),
+      ),
+    );
+    const changed = getSnapshot(
+      await readCompatibilityReply(
+        await staticFetch(`${path}/remote`, post({ expectedRevision: 1, change: 'add-budget' })),
+      ),
+    );
+    const drop = (input: unknown): RequestInit => ({
+      ...post(input),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-A2UI-Compatibility-Drop-Response': '1',
+      },
+    });
+    expect(
+      await readCompatibilityReply(await staticFetch(`${path}/actions`, drop(action(initial)))),
+    ).toMatchObject({ kind: 'conflict', code: 'revision-mismatch' });
+    const invalid = action(changed);
+    invalid.action.action.context.days = '8';
+    expect(
+      await readCompatibilityReply(await staticFetch(`${path}/actions`, drop(invalid))),
+    ).toMatchObject({
+      kind: 'invalid',
+      issues: [expect.objectContaining({ componentId: 'days' })],
+    });
+    const low = action(changed);
+    low.action.action.context.budget = '100';
+    expect(
+      await readCompatibilityReply(await staticFetch(`${path}/actions`, drop(low))),
+    ).toMatchObject({
+      kind: 'invalid',
+      message: '预算未满足服务端业务规则。',
+      issues: [expect.objectContaining({ componentId: 'budget' })],
+    });
+    expect(getSnapshot(await readCompatibilityReply(await staticFetch(path)))).toEqual(changed);
+    expect(
+      await readCompatibilityReply(await staticFetch(`${path}/actions`, post(action(changed)))),
+    ).toMatchObject({ kind: 'accepted', snapshot: { revision: 3, acceptedActions: 1 } });
+  });
+
   it('uses the real static entrypoint for snapshots, invalid400, conflict409 and generic404', async () => {
     const documentId = `reply-${crypto.randomUUID()}`;
     const created = await readCompatibilityReply(
@@ -1096,6 +1190,62 @@ describe('compatibility reply handling at transport boundaries', () => {
 });
 
 describe('HTTP and browser-memory adapters', () => {
+  it('commits before disconnecting locally and never drops invalid or conflicting replies', async () => {
+    const http = await httpFixture();
+    const documentId = 'dropped-local';
+    const documentPath = `${root}/${documentId}`;
+    const drop = (input: unknown): RequestInit => ({
+      ...post(input),
+      headers: {
+        'Content-Type': 'application/json',
+        'X-A2UI-Compatibility-Drop-Response': '1',
+      },
+    });
+    try {
+      const initial = getSnapshot(
+        await readCompatibilityReply(
+          await http.fetch(root, drop({ documentId, scenario: 'standard' })),
+        ),
+      );
+      const envelope = action(initial);
+      await expect(http.fetch(`${documentPath}/actions`, drop(envelope))).rejects.toThrow();
+      const latest = getSnapshot(
+        await readCompatibilityReply(
+          await http.fetch(documentPath, {
+            headers: { 'X-A2UI-Compatibility-Drop-Response': '1' },
+          }),
+        ),
+      );
+      expect(latest).toMatchObject({ revision: 2, acceptedActions: 1 });
+      expect(surface(latest).model.form).toHaveProperty('traveler', '小林');
+      expect(
+        await readCompatibilityReply(await http.fetch(`${documentPath}/actions`, drop(envelope))),
+      ).toMatchObject({
+        kind: 'conflict',
+        code: 'revision-mismatch',
+        snapshot: { revision: 2, acceptedActions: 1 },
+      });
+      const invalid = action(latest);
+      invalid.action.action.context.days = '8';
+      expect(
+        await readCompatibilityReply(await http.fetch(`${documentPath}/actions`, drop(invalid))),
+      ).toMatchObject({
+        kind: 'invalid',
+        issues: [expect.objectContaining({ componentId: 'days' })],
+      });
+      expect(getSnapshot(await readCompatibilityReply(await http.fetch(documentPath)))).toEqual(
+        latest,
+      );
+      expect(
+        await readCompatibilityReply(
+          await http.fetch(`${documentPath}/actions`, post(action(latest))),
+        ),
+      ).toMatchObject({ kind: 'accepted', snapshot: { revision: 3, acceptedActions: 2 } });
+    } finally {
+      await http.close();
+    }
+  });
+
   it('has matching routes, JSON output and statuses with independent authorities', async () => {
     const http = await httpFixture();
     const local = createA2uiCompatibilityStaticHandler();

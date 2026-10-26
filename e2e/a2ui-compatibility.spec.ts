@@ -7,9 +7,50 @@ import {
   exerciseCompatibilityFallbacks,
   exerciseCompatibilityValidation,
 } from './a2ui-compatibility.helpers';
+import {
+  exerciseCompatibilityDropRejections,
+  exerciseCompatibilityDropReset,
+  exerciseCompatibilityLostResponse,
+  exerciseCompatibilityLostSavedResponse,
+} from './a2ui-compatibility-recovery.helpers';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/#labs/a2ui-compatibility');
+});
+
+test('the one-shot loss control requires a read and never automatically resubmits', async ({
+  page,
+}) => {
+  const headers: (string | undefined)[] = [];
+  page.on('request', (request) => {
+    if (request.url().endsWith('/actions')) {
+      headers.push(request.headers()['x-a2ui-compatibility-drop-response']);
+      const envelope = request.postDataJSON();
+      expect(Object.keys(envelope).sort()).toEqual(['action', 'expectedRevision']);
+      expect(envelope.action).toMatchObject({ version: 'v0.9.1' });
+      expect(JSON.stringify(envelope)).not.toContain('Drop-Response');
+    }
+  });
+  await exerciseCompatibilityLostResponse(page);
+  expect(headers).toEqual(['1', undefined]);
+});
+
+for (const laterDays of ['2', '5']) {
+  test(`the loss control preserves saved-action later draft ${laterDays} until an explicit conflict choice`, async ({
+    page,
+  }) => {
+    await exerciseCompatibilityLostSavedResponse(page, laterDays);
+  });
+}
+
+test('the loss control consumes domain rejections and clears on reset or document switch', async ({
+  page,
+}) => {
+  await exerciseCompatibilityDropRejections(page);
+  await compatibilityLab(page)
+    .getByRole('button', { name: '重置并使用新 ID', exact: true })
+    .click();
+  await exerciseCompatibilityDropReset(page);
 });
 
 test('capability checks fall back without fetching catalogs and preserve a hidden draft', async ({
@@ -288,7 +329,7 @@ test('a failed saved-action request cannot attribute another accepted action to 
   await expect(lab.getByRole('region', { name: '草稿冲突', exact: true })).toContainText(
     '远端新值2',
   );
-  await expect(lab).not.toContainText('服务端接受动作');
+  await expect(lab.getByRole('status')).not.toContainText('服务端接受动作');
   expect(requests).toBe(1);
 });
 

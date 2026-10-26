@@ -1,6 +1,9 @@
 import type { A2uiClientAction, A2uiComponent, A2uiSurface } from '../../a2ui';
 import type { JsonValue } from '../../json-pointer';
 
+// One-request teaching fault at the transport layer; never part of an A2UI message.
+export const COMPATIBILITY_DROP_RESPONSE_HEADER = 'X-A2UI-Compatibility-Drop-Response';
+
 export type CompatibilityScenario = 'standard' | 'unknown-catalog' | 'unknown-component';
 export type RemoteChange = 'extend-days' | 'add-budget' | 'replace-surface';
 
