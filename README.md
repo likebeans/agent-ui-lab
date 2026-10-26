@@ -1,5 +1,7 @@
 # Agent UI Lab
 
+<a href="https://github.com/likebeans/agent-ui-lab/actions/workflows/deploy-pages.yml"><img src="https://github.com/likebeans/agent-ui-lab/actions/workflows/deploy-pages.yml/badge.svg?branch=main" alt="CI 与 GitHub Pages 发布状态" /></a>
+
 **面向前端开发者的 Agent UI 交互式学习与参考实现仓库。**
 
 从实际操作出发，追溯消息、状态和源码，再把能力迁移到自己的业务。Agent UI Lab 提供聊天工作台、独立能力实验和学习文档。它把 **AG-UI、A2UI、MCP Apps** 放进可操作的旅行对话中：你可以规划行程、填写生成表单、打开工具 App，再沿真实协议消息追到状态变化和源码实现。
