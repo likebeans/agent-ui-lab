@@ -63,6 +63,27 @@ export const DOC_CHAPTERS = [
     group: '实践与参考',
   },
   {
+    slug: 'independent-project',
+    file: 'docs/08-independent-project.md',
+    title: '独立项目：活动报名准备',
+    description: '用固定契约完成只读场景，逐项验证消息、状态与失败恢复。',
+    group: '实践与参考',
+  },
+  {
+    slug: 'learning-validation',
+    file: 'docs/09-learning-validation.md',
+    title: '首次学习验收',
+    description: '使用任务单和观察模板记录真实学习过程。',
+    group: '实践与参考',
+  },
+  {
+    slug: 'maintaining',
+    file: 'docs/10-maintaining.md',
+    title: '维护与贡献验证',
+    description: '核对 Node 支持矩阵、贡献检查与 CI 失败诊断。',
+    group: '实践与参考',
+  },
+  {
     slug: 'project',
     file: 'README.md',
     title: '项目说明',

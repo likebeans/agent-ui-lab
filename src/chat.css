@@ -756,6 +756,29 @@
   margin-top: 9px;
   line-height: 1.6;
 }
+.assistant-body .module-recovery {
+  max-width: none;
+  margin: 12px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+.assistant-body .module-recovery h2 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.assistant-body .module-recovery p {
+  font-size: 12px;
+}
+.assistant-body .module-recovery-actions {
+  margin-top: 12px;
+}
+.assistant-body .module-loading {
+  padding: 12px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
 .chat-message-failure {
   margin-top: 12px;
   padding-top: 10px;

@@ -1,8 +1,17 @@
 import type { LabDatabase } from '../../storage/sqlite';
 
-export function migrateApprovalStore(database: LabDatabase): void {
+export type ApprovalNamespace = 'human_approval' | 'enrollment_workflow';
+
+export function migrateApprovalStore(
+  database: LabDatabase,
+  namespace: ApprovalNamespace = 'human_approval',
+): void {
+  if (namespace !== 'human_approval' && namespace !== 'enrollment_workflow')
+    throw new Error('Unknown approval storage namespace.');
   database.migrate(
-    'human-approval/001-initial',
+    namespace === 'human_approval'
+      ? 'human-approval/001-initial'
+      : 'enrollment-workflow/001-initial',
     `
       CREATE TABLE human_approval_tasks (
         task_id TEXT PRIMARY KEY,
@@ -28,6 +37,6 @@ export function migrateApprovalStore(database: LabDatabase): void {
         FOREIGN KEY (task_id, teaching_session_id)
           REFERENCES human_approval_tasks (task_id, teaching_session_id)
       ) STRICT;
-    `,
+    `.replaceAll('human_approval', namespace),
   );
 }

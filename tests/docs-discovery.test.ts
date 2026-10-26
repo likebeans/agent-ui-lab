@@ -50,7 +50,7 @@ function chapter(slug: DocSlug, file: string): DocChapter {
 }
 
 describe('nested document discovery', () => {
-  it('preserves all ten curated chapters and appends labs in stable slug order', () => {
+  it('preserves all curated chapters and appends labs in stable slug order', () => {
     expect(
       registry
         .slice(0, DOC_CHAPTERS.length)
@@ -117,7 +117,7 @@ describe('nested document discovery', () => {
     const sources = Object.freeze([Object.freeze({ file: 'docs/labs/one.md', title: 'One' })]);
     expect(discoverDocChapters(sources, curated).at(-1)?.slug).toBe('labs/one');
     expect(discoverDocChapters([], curated)).toEqual(DOC_CHAPTERS);
-    expect(curated).toHaveLength(10);
+    expect(curated).toHaveLength(DOC_CHAPTERS.length);
     expect(resolveDocLink('/docs/labs/foundation.md', 'map')).toBeNull();
     expect(resolveDocLink('/docs/labs/foundation.md', 'map', registry)).toBe(
       docHref('labs/foundation'),
@@ -183,7 +183,7 @@ describe('nested document discovery', () => {
       .filter((file) => /^labs\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/u.test(file))
       .map((file) => `docs/${file}`)
       .sort();
-    expect(documents.slice(0, 10).map((item) => item.slug)).toEqual(
+    expect(documents.slice(0, DOC_CHAPTERS.length).map((item) => item.slug)).toEqual(
       DOC_CHAPTERS.map((item) => item.slug),
     );
     expect(

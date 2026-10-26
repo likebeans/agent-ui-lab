@@ -13,6 +13,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  minimum-node:
+    name: Minimum Node 22.13.0
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up minimum Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '22.13.0'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify contracts, types and production build
+        run: npm run check
+
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -34,14 +52,30 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Verify local HTTP application
+        id: local-browser
         env:
           PLAYWRIGHT_CHANNEL: chromium
           LAB_INSTANCE_ID: ci-local
           LAB_DATA_DIR: ${{ runner.temp }}/agent-ui-lab-local
         run: npm run test:e2e
       - name: Verify Pages under a subpath without an API server
+        id: pages-browser
         env:
           PLAYWRIGHT_CHANNEL: chromium
           LAB_INSTANCE_ID: ci-pages
           PAGES_TEST_PATH: /pages-test/
         run: npm run test:pages
+      - name: Upload browser failure evidence
+        if: ${{ failure() && (steps.local-browser.outcome == 'failure' || steps.pages-browser.outcome == 'failure') }}
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-failures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            test-results/
+            !test-results/**/*.sqlite*
+            !test-results/**/*.db*
+            !test-results/**/.env*
+          if-no-files-found: ignore
+          retention-days: 7
+          include-hidden-files: false

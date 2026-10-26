@@ -7,36 +7,40 @@ import type {
   StoredApprovalCommand,
 } from '../../../shared/labs/human-approval/types';
 import type { LabDatabase } from '../../storage/sqlite';
-import { migrateApprovalStore } from './migrations';
+import { migrateApprovalStore, type ApprovalNamespace } from './migrations';
 
 function readJson<Value>(row: Record<string, SQLOutputValue> | undefined): Value | null {
   return row ? (JSON.parse(row.value as string) as Value) : null;
 }
 
-export function createSqliteApprovalStore(database: LabDatabase): ApprovalStore {
-  migrateApprovalStore(database);
-  const getTask = database.db.prepare(
+export function createSqliteApprovalStore(
+  database: LabDatabase,
+  namespace: ApprovalNamespace = 'human_approval',
+): ApprovalStore {
+  migrateApprovalStore(database, namespace);
+  const prepare = (sql: string) => database.db.prepare(sql.replaceAll('human_approval', namespace));
+  const getTask = prepare(
     'SELECT snapshot_json AS value FROM human_approval_tasks WHERE task_id = ?',
   );
-  const putTask = database.db.prepare(`
+  const putTask = prepare(`
     INSERT INTO human_approval_tasks (task_id, teaching_session_id, snapshot_json)
     VALUES (?, ?, ?)
     ON CONFLICT (task_id) DO UPDATE SET snapshot_json = excluded.snapshot_json
     WHERE human_approval_tasks.teaching_session_id = excluded.teaching_session_id
   `);
-  const getCommand = database.db.prepare(`
+  const getCommand = prepare(`
     SELECT command_json AS value FROM human_approval_commands
     WHERE teaching_session_id = ? AND command_id = ?
   `);
-  const putCommand = database.db.prepare(`
+  const putCommand = prepare(`
     INSERT INTO human_approval_commands
       (teaching_session_id, command_id, task_id, command_json)
     VALUES (?, ?, ?, ?)
   `);
-  const getEnrollment = database.db.prepare(
+  const getEnrollment = prepare(
     'SELECT enrollment_json AS value FROM human_approval_enrollments WHERE task_id = ?',
   );
-  const putEnrollment = database.db.prepare(`
+  const putEnrollment = prepare(`
     INSERT INTO human_approval_enrollments
       (enrollment_id, task_id, proposal_id, teaching_session_id, enrollment_json)
     VALUES (?, ?, ?, ?, ?)

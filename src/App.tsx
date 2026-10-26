@@ -785,8 +785,15 @@ function Roadmap({ navigate }: { navigate: (page: Page) => void }) {
       done: '能区分等待确认、结果未知与已确认，并证明重复提交没有重复报名。',
     },
     {
+      title: '把表单、确认与恢复连成一次报名',
+      body: '保存 A2UI 表单提议，确认具体版本，再模拟响应丢失。沿同一个 task 和 run 查询事件、命令收据与报名事实。',
+      action: '打开活动报名联合实验',
+      page: 'enrollment-workflow',
+      done: '能解释草稿、已保存提议与报名事实的区别，并用同一报名 ID 证明原命令重试没有重复写入。',
+    },
+    {
       title: '从实验走向真实开发',
-      body: '沿 docs/04-real-development.md 接入真实模型与业务 API，把任务恢复与确认经验迁移到具体业务，再补齐鉴权、权限和部署。',
+      body: '先按 docs/08-independent-project.md 独立完成只读活动报名准备，再沿 docs/04-real-development.md 接入真实模型与业务 API，补齐鉴权、权限和部署。',
       action: '回到实验总览',
       page: 'overview',
       done: '能明确区分模型决策、协议转换、业务执行与 UI 渲染。',
