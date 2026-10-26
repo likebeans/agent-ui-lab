@@ -2,6 +2,7 @@
   "name": "agent-ui-lab",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22.13.0"
