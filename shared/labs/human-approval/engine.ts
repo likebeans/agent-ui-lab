@@ -21,6 +21,8 @@ export interface ApprovalServiceOptions {
   createId?: (kind: 'proposal' | 'enrollment' | 'run') => string;
   standardTtlMs?: number;
   shortTtlMs?: number;
+  /** A composed workflow keeps one run across the human input boundary. */
+  startRunOnPropose?: boolean;
 }
 
 export interface ApprovalService {
@@ -78,7 +80,7 @@ export function createApprovalService(
         threadId: context.teachingSessionId,
         version: 1,
         status: 'waiting-input',
-        currentRunId: null,
+        currentRunId: options.startRunOnPropose ? createId('run') : null,
         state: {
           proposal: {
             proposalId: createId('proposal'),
@@ -143,7 +145,7 @@ export function createApprovalService(
       ...task,
       version: version + 1,
       status: payload.type === 'approve' ? 'succeeded' : 'cancelled',
-      currentRunId: payload.type === 'approve' ? createId('run') : null,
+      currentRunId: task.currentRunId ?? (payload.type === 'approve' ? createId('run') : null),
       state: {
         ...task.state,
         proposal: {

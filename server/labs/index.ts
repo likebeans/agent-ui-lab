@@ -8,6 +8,8 @@ import { installA2uiCompatibilityRoutes } from './a2ui-compatibility/index';
 import { installHumanApprovalRoutes } from './human-approval/routes';
 import { createSqliteApprovalStore } from './human-approval/store';
 import { createTaskRecoveryRouter } from './task-recovery';
+import { WORKFLOW_API } from '../../shared/labs/enrollment-workflow/contract';
+import { createWorkflowRouter, workflowMalformedJson } from './enrollment-workflow';
 
 // Add each lab's HTTP adapter here; never import this module from a browser manifest.
 export function installLabRoutes(
@@ -39,6 +41,8 @@ export function installLabRoutes(
     });
     cleanups.push(() => approval.close());
     installA2uiCompatibilityRoutes(app);
+    app.use(WORKFLOW_API, createWorkflowRouter(database));
+    app.use(`${WORKFLOW_API}/commands`, workflowMalformedJson);
     app.post('/api/labs/foundation/run', (request, response, next) => {
       try {
         response.json(runFoundation(request.body));

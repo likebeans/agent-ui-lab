@@ -23,13 +23,12 @@ export function createLabRegistry(definitions: readonly LabDefinition[]) {
       ...definition,
       number: String(index + 1).padStart(2, '0'),
       Component: lazy(definition.load),
-      ChatComponent: definition.chat ? lazy(definition.chat.load) : undefined,
     }));
 }
 
 const manifests = import.meta.glob<{ default: LabDefinition }>('./*/manifest.ts', { eager: true });
 export const labs = createLabRegistry(Object.values(manifests).map((module) => module.default));
-export const chatLabs = labs.filter((lab) => lab.chat && lab.ChatComponent);
+export const chatLabs = labs.filter((lab) => lab.chat);
 export type RegisteredLab = (typeof labs)[number];
 
 export function getLab(id: string): RegisteredLab | undefined {

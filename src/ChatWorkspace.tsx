@@ -1,6 +1,5 @@
 import {
   Component,
-  Suspense,
   useCallback,
   useEffect,
   useRef,
@@ -39,6 +38,7 @@ import { useLabRuntime } from './labs/useLabRuntime';
 import { tripContext } from './labs/legacy';
 import { STATIC_MODE, describeTrace } from '../shared/runtime';
 import { RuntimeNotice } from './components/RuntimeNotice';
+import { RecoverableModule } from './components/RecoverableModule';
 import { Inspector } from './components/Inspector';
 import { docHref } from '../shared/doc-navigation';
 import { useTheme } from './useTheme';
@@ -87,16 +87,20 @@ function TurnContent({
   turn,
   onTrace,
   onComplete,
+  onRetry,
   onInteraction,
   onInspect,
   selected,
   active,
+  busy,
 }: {
   turn: Turn;
   selected: boolean;
   active: boolean;
+  busy: boolean;
   onTrace: (id: string, entry: TraceInput) => void;
   onComplete: (id: string, summary: string) => void;
+  onRetry: (id: string) => void;
   onInteraction: (
     id: string,
     exchange: { user: string; assistant: string; context?: LabContext },
@@ -128,7 +132,6 @@ function TurnContent({
     [onInspect, turn.request.id],
   );
   const runtime = useLabRuntime(identity, trace, focusTrace);
-  const Content = lab.ChatComponent!;
   const props: LabChatTurnProps = {
     runtime,
     active,
@@ -154,16 +157,16 @@ function TurnContent({
           </span>
         </div>
         <TurnBoundary onFailure={() => complete('回复渲染失败')}>
-          <Suspense
-            fallback={
-              <p className="chat-run-status">
-                <LoaderCircle className="spinner" size={14} />
-                正在准备回复…
-              </p>
-            }
-          >
-            <Content {...props} />
-          </Suspense>
+          <RecoverableModule
+            load={lab.chat!.load}
+            componentProps={props}
+            name={`${info.name} 回复`}
+            active={active}
+            retryDisabled={busy}
+            loadErrorsOnly
+            onFailure={() => complete('回复模块加载失败')}
+            onRetry={() => onRetry(turn.request.id)}
+          />
         </TurnBoundary>
         <button
           className="inspect-turn"
@@ -308,6 +311,14 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
       previous.map((turn) => (turn.request.id === id ? { ...turn, summary } : turn)),
     );
     setPending((current) => (current === id ? null : current));
+  }, []);
+  const onRetry = useCallback((id: string) => {
+    if (!activeTurns.current.has(id)) return;
+    sending.current = true;
+    setPending(id);
+    setTurns((previous) =>
+      previous.map((turn) => (turn.request.id === id ? { ...turn, summary: undefined } : turn)),
+    );
   }, []);
   const onInteraction = useCallback(
     (id: string, exchange: { user: string; assistant: string; context?: LabContext }) => {
@@ -664,9 +675,11 @@ export function ChatWorkspace({ active = true }: { active?: boolean }) {
                     key={message.id}
                     turn={turn}
                     active={active}
+                    busy={busy}
                     selected={turn.request.id === selectedId && inspectorOpen}
                     onTrace={onTrace}
                     onComplete={onComplete}
+                    onRetry={onRetry}
                     onInteraction={onInteraction}
                     onInspect={inspectTurn}
                   />

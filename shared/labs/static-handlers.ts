@@ -3,6 +3,7 @@ import { createA2uiCompatibilityStaticHandler } from './a2ui-compatibility/stati
 import { humanApprovalStaticHandler } from './human-approval/static';
 import { RECOVERY_API } from './task-recovery/contract';
 import { createRecoveryFixture } from './task-recovery/memory';
+import { createWorkflowStaticHandler } from './enrollment-workflow/static';
 
 const recoveryFixture = createRecoveryFixture();
 
@@ -15,6 +16,7 @@ export type StaticLabHandler = (
 const handlers: StaticLabHandler[] = [
   createA2uiCompatibilityStaticHandler(),
   humanApprovalStaticHandler,
+  createWorkflowStaticHandler(),
   async (path, options) => {
     if (!path.startsWith(`${RECOVERY_API}/`)) return undefined;
     return recoveryFixture.handle(new Request(new URL(path, 'http://fixture.local'), options));

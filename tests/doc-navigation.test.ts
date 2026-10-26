@@ -25,13 +25,16 @@ describe('document manifest', () => {
       'reference',
       'exercises',
       'real-development',
+      'independent-project',
+      'learning-validation',
+      'maintaining',
       'project',
     ]);
     const files = DOC_CHAPTERS.map((chapter) => chapter.file);
     const markdownFiles = readdirSync(new URL('docs/', projectRoot))
       .filter((file) => file.endsWith('.md'))
       .map((file) => `docs/${file}`);
-    expect(new Set(files).size).toBe(10);
+    expect(new Set(files).size).toBe(DOC_CHAPTERS.length);
     expect([...files].sort()).toEqual(['README.md', ...markdownFiles].sort());
     for (const chapter of DOC_CHAPTERS) {
       expect(chapter.title).toMatch(/\p{Script=Han}/u);

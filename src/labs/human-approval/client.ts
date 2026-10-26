@@ -148,7 +148,7 @@ function enrollmentMatchesTask(enrollment: Enrollment | null, task: ApprovalTask
   );
 }
 
-function isResult(value: unknown): value is ApprovalResult {
+export function isResult(value: unknown): value is ApprovalResult {
   if (!object(value) || 'error' in value) return false;
   if (value.status === 'rejected')
     return (
@@ -170,7 +170,7 @@ function isResult(value: unknown): value is ApprovalResult {
   );
 }
 
-function isFacts(value: unknown): value is ApprovalFactsResult {
+export function isFacts(value: unknown): value is ApprovalFactsResult {
   if (!object(value) || 'error' in value) return false;
   if (value.status === 'rejected') return isResult(value);
   return (

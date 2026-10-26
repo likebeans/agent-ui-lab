@@ -85,7 +85,7 @@ LAB_INSTANCE_ID=recovery
 LAB_DATA_DIR=.lab-data/recovery
 ```
 
-`LAB_WEB_PORT`、`LAB_API_PORT`、`LAB_PREVIEW_PORT` 同时驱动启动、代理、Origin 校验与测试地址。`PORT` 保留为 API 端口兼容别名。`LAB_INSTANCE_ID` 可显式设置，默认根据 checkout 路径生成，避免不同 worktree 的实例混淆。数据目录按 worktree 隔离，已加入忽略规则；本地服务在此创建 W1/W2 共用的 `lab.sqlite`，Pages 不创建数据库。
+`LAB_WEB_PORT`、`LAB_API_PORT`、`LAB_PREVIEW_PORT` 同时驱动启动、代理、Origin 校验与测试地址。`PORT` 保留为 API 端口兼容别名。`LAB_INSTANCE_ID` 可显式设置，默认根据 checkout 路径生成，避免不同 worktree 的实例混淆。数据目录按 worktree 隔离，已加入忽略规则；本地服务在此创建任务恢复、人工确认与活动报名联合实验共用的 `lab.sqlite`，各实验使用独立业务表；Pages 不创建数据库。
 
 在配置好的目录执行 `npm run dev`。`npm run dev:web`、`npm run dev:server`、`npm start`、`npm run preview:pages` 使用相同配置。端口冲突时会失败，不会自动连到别的服务。`/api/health` 返回实例身份；前端和浏览器测试检查当前响应是否属于预期实例。
 
