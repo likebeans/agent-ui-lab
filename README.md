@@ -219,7 +219,11 @@ A2UI 使用上表列出的组件子集。MCP Host 只加载项目自带资源；
 - 真实 Agent 接入示例
 - 持久聊天会话，以及在活动报名联合实验基础上接入真实业务数据源
 
-欢迎通过 [Issue](https://github.com/likebeans/agent-ui-lab/issues)反馈难以理解的步骤、教程问题与可复现缺陷。提交教学示例时，请附上预期行为和验证结果。许可证尚未确定，仓库暂未包含 `LICENSE`。
+欢迎通过 [Issue](https://github.com/likebeans/agent-ui-lab/issues)反馈难以理解的步骤、教程问题与可复现缺陷。提交教学示例时，请附上预期行为和验证结果。
+
+## 许可证
+
+本项目采用 [MIT 许可证](https://github.com/likebeans/agent-ui-lab/blob/main/LICENSE)。使用、修改或分发时，请保留许可证中的版权声明和许可声明。第三方依赖遵循各自的许可证。
 
 ## 官方资料
 
