@@ -1,5 +1,8 @@
 import express, { type ErrorRequestHandler, type Express, type Response } from 'express';
-import type { CompatibilityReply } from '../../../shared/labs/a2ui-compatibility/contract';
+import {
+  COMPATIBILITY_DROP_RESPONSE_HEADER,
+  type CompatibilityReply,
+} from '../../../shared/labs/a2ui-compatibility/contract';
 import { createCompatibilityEngine } from '../../../shared/labs/a2ui-compatibility/engine';
 
 const installed = new WeakSet<Express>();
@@ -23,9 +26,15 @@ export function installA2uiCompatibilityRoutes(app: Express): void {
   app.post(`${root}/:documentId/remote`, (request, response) =>
     send(response, engine.change(request.params.documentId, request.body)),
   );
-  app.post(`${root}/:documentId/actions`, (request, response) =>
-    send(response, engine.act(request.params.documentId, request.body)),
-  );
+  app.post(`${root}/:documentId/actions`, (request, response) => {
+    const reply = engine.act(request.params.documentId, request.body);
+    if (reply.kind === 'accepted' && request.get(COMPATIBILITY_DROP_RESPONSE_HEADER) === '1') {
+      // The authoritative mutation has already committed; do not send a success receipt.
+      response.destroy();
+      return;
+    }
+    send(response, reply);
+  });
   const invalidBody: ErrorRequestHandler = (error: unknown, _request, response, next) => {
     if (error instanceof SyntaxError && 'type' in error && error.type === 'entity.parse.failed') {
       send(response, { kind: 'invalid', message: '请求 JSON 无效。', issues: [] });

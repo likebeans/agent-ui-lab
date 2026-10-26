@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2, CircleHelp, Database, FilePenLine, ShieldCheck } from 'lucide-react';
 import type { LabComponentProps } from '../../../shared/lab-contract';
+import type { TaskLocator as PortableTaskLocator } from '../../../shared/labs/task-locator';
+import { TaskLocator } from '../../components/TaskLocator';
 import {
   WORKSHOPS,
   type ApprovalCommand,
@@ -14,6 +16,7 @@ import {
 import {
   acceptedMatchesCommand,
   loadLocator,
+  openApprovalTask,
   queryFacts,
   saveLocator,
   sendCommand,
@@ -91,6 +94,7 @@ export default function HumanApprovalLab({ runtime, active, onResetTrace }: LabC
   const [pagesResetRequired, setPagesResetRequired] = useState(false);
   const [busy, setBusy] = useState<'sending' | 'querying' | null>(null);
   const busyRef = useRef(false);
+  const openingRef = useRef<AbortController | null>(null);
   const [error, setError] = useState<FormError | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef(active);
@@ -107,6 +111,7 @@ export default function HumanApprovalLab({ runtime, active, onResetTrace }: LabC
     setStorageAvailable(saveLocator(runtime.mode, locatorRef.current));
     return () => {
       mounted.current = false;
+      openingRef.current?.abort();
     };
   }, [runtime.mode]);
 
@@ -392,6 +397,74 @@ export default function HumanApprovalLab({ runtime, active, onResetTrace }: LabC
     } finally {
       busyRef.current = false;
       if (alive()) setBusy(null);
+    }
+  }
+
+  async function openExisting(target: PortableTaskLocator) {
+    if (!activeRef.current || busyRef.current || locatorRef.current.pending)
+      throw new Error('请先完成当前操作并核实待定命令，再打开已有任务。');
+    const previous = locatorRef.current;
+    const controller = new AbortController();
+    openingRef.current = controller;
+    busyRef.current = true;
+    setBusy('querying');
+    try {
+      const reply = await openApprovalTask(runtime, target, controller.signal);
+      if (!alive() || controller.signal.aborted || locatorRef.current !== previous) return;
+      if (reply.kind === 'unknown')
+        throw new Error(`打开任务的事实查询结果未知。${reply.reason} 当前任务与草稿保持不变。`);
+      if (reply.value.status !== 'found')
+        throw new Error(
+          `${reply.value.code}：${reply.value.reason} 当前任务与草稿保持不变。${
+            runtime.mode === 'pages' && reply.value.code === 'NOT_FOUND'
+              ? 'Pages 只保留当前页面内存；独立标签页或刷新后无法恢复，也不会自动生成提议。'
+              : ''
+          }`,
+        );
+      const result = reply.value;
+      if (
+        taskRef.current?.taskId === result.task.taskId &&
+        taskRef.current.version > result.task.version
+      )
+        throw new Error('查询返回了比当前已核实版本更旧的任务，当前任务与草稿保持不变。');
+      // Everything above is read-only. Commit the validated identity and facts together.
+      remember({
+        version: 1,
+        teachingSessionId: target.teachingSessionId,
+        taskId: target.taskId,
+        pending: null,
+        archivedPending: null,
+      });
+      applySnapshot(result.task, result.enrollment, true);
+      setFacts(result);
+      setLastCommand(null);
+      setStaleDecision(null);
+      setExperimentCommand(null);
+      setExperimentResult('');
+      setError(null);
+      setRestoreRequired(false);
+      setPagesResetRequired(false);
+      setRecoveryReason('');
+      setQueriedPending(false);
+      setDropResponse(false);
+      setValidity('standard');
+      setNotice(`已打开已有任务。报名记录数：${result.recordCount}；本次只查询事实。`);
+      onResetTrace();
+      runtime.trace({
+        taskId: result.task.taskId,
+        threadId: result.task.threadId,
+        eventType: 'human-approval/facts',
+        direction: runtime.mode === 'pages' ? 'browser-agent→client' : 'server→client',
+        transport: runtime.mode === 'pages' ? 'browser-memory' : 'HTTP',
+        label: '打开已有任务：已校验事实',
+        payload: result,
+      });
+    } finally {
+      if (openingRef.current === controller) {
+        openingRef.current = null;
+        busyRef.current = false;
+        if (alive()) setBusy(null);
+      }
     }
   }
 
@@ -866,6 +939,25 @@ export default function HumanApprovalLab({ runtime, active, onResetTrace }: LabC
           在检查器中定位事实
         </button>
       </section>
+
+      <TaskLocator
+        labId="human-approval"
+        mode={runtime.mode}
+        current={
+          locator.taskId
+            ? {
+                version: 1,
+                labId: 'human-approval',
+                mode: runtime.mode,
+                teachingSessionId: locator.teachingSessionId,
+                taskId: locator.taskId,
+              }
+            : null
+        }
+        disabled={!active || Boolean(busy || pending)}
+        hasUnsavedDraft={isDirty(draft, proposal?.content ?? { ...emptyDraft(), seats: 1 })}
+        onOpen={openExisting}
+      />
 
       <section className={styles.panel} aria-label="当前命令">
         <h3>当前命令</h3>

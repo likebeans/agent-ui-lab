@@ -1,5 +1,5 @@
 import type { StaticLabHandler } from '../static-handlers';
-import type { CompatibilityReply } from './contract';
+import { COMPATIBILITY_DROP_RESPONSE_HEADER, type CompatibilityReply } from './contract';
 import { createCompatibilityEngine } from './engine';
 
 const root = '/api/labs/a2ui-compatibility/documents';
@@ -46,8 +46,23 @@ export function createA2uiCompatibilityStaticHandler(): StaticLabHandler {
       return response({ kind: 'invalid', message: '请求 JSON 无效。', issues: [] });
     }
     if (create) return response(engine.create(input));
-    return response(
-      match?.[2] === 'remote' ? engine.change(documentId, input) : engine.act(documentId, input),
-    );
+    const reply =
+      match?.[2] === 'remote' ? engine.change(documentId, input) : engine.act(documentId, input);
+    if (
+      reply.kind === 'accepted' &&
+      new Headers(options.headers).get(COMPATIBILITY_DROP_RESPONSE_HEADER) === '1'
+    ) {
+      // Fail body consumption after committing. Throwing here would be caught by
+      // staticFetch and converted to JSON 400, which is not a domain rejection.
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(new TypeError('动作响应连接已中断。'));
+          },
+        }),
+        { headers: { 'Content-Type': 'application/json', 'X-Lab-Transport': 'browser-memory' } },
+      );
+    }
+    return response(reply);
   };
 }

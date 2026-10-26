@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { LabRuntime } from '../../../shared/lab-contract';
+import { validateTaskLocator, type TaskLocator } from '../../../shared/labs/task-locator';
 import { LAB_INSTANCE_ID } from '../../../shared/instance';
 import {
   a2uiClientActionSchema,
@@ -155,9 +156,14 @@ async function request<T>(
   body: unknown | undefined,
   validate: (value: unknown) => value is T,
   drop = false,
+  externalSignal?: AbortSignal,
 ): Promise<Reply<T>> {
   const controller = new AbortController();
-  const signal = AbortSignal.any([runtime.signal, controller.signal]);
+  const signal = AbortSignal.any([
+    runtime.signal,
+    controller.signal,
+    ...(externalSignal ? [externalSignal] : []),
+  ]);
   const timer = setTimeout(
     () => controller.abort(new DOMException('请求超时', 'TimeoutError')),
     10_000,
@@ -243,7 +249,7 @@ export function sendWorkflow(runtime: LabRuntime, saved: WorkflowSaved, drop = f
   );
 }
 
-export function readWorkflow(runtime: LabRuntime, locator: WorkflowLocator) {
+export function readWorkflow(runtime: LabRuntime, locator: WorkflowLocator, signal?: AbortSignal) {
   const search = new URLSearchParams({
     taskId: locator.taskId,
     afterSeq: '0',
@@ -263,6 +269,18 @@ export function readWorkflow(runtime: LabRuntime, locator: WorkflowLocator) {
           value.task.threadId === locator.session &&
           value.task.state.proposal.teachingSessionId === locator.session &&
           value.events.length === value.checkpoint.cursor.afterSeq)),
+    false,
+    signal,
+  );
+}
+
+/** Imported identities query facts only; saved or pending commands are never imported. */
+export function openWorkflowTask(runtime: LabRuntime, locator: TaskLocator, signal?: AbortSignal) {
+  const target = validateTaskLocator(locator, { labId: 'enrollment-workflow', mode: runtime.mode });
+  return readWorkflow(
+    runtime,
+    { session: target.teachingSessionId, taskId: target.taskId, pending: null, last: null },
+    signal,
   );
 }
 
